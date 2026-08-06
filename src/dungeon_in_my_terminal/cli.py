@@ -17,6 +17,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="固定亂數種子，用同一個地城重玩（結算畫面會顯示這局的種子碼）",
     )
+    parser.add_argument(
+        "--lang",
+        choices=["zh", "en"],
+        default="zh",
+        help="介面語言，預設繁體中文，加 en 切換英文",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -25,8 +31,10 @@ def main(argv: list[str] | None = None) -> int:
         print("找不到 curses。Windows 請先安裝：pip install windows-curses", file=sys.stderr)
         return 1
 
+    from . import i18n
     from .ui.app import launch
 
+    i18n.set_language(args.lang)
     launch(seed=args.seed)
     return 0
 

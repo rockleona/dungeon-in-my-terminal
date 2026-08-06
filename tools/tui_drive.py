@@ -39,6 +39,7 @@ def drive(
     cols: int = COLS,
     rows: int = ROWS,
     code: str | None = None,
+    lang: str | None = None,
 ) -> list[tuple[str, str]]:
     """Run the game, send each key, and snapshot the screen after each one.
 
@@ -55,6 +56,8 @@ def drive(
         argv = [sys.executable, "-c", code or LAUNCH]
         if seed is not None:
             argv += ["--seed", str(seed)]
+        if lang is not None:
+            argv += ["--lang", lang]
         os.execvpe(sys.executable, argv, env)
 
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -113,10 +116,16 @@ def main() -> int:
     parser.add_argument("--last", type=int, default=0, help="only show the last N frames")
     parser.add_argument("--cols", type=int, default=COLS)
     parser.add_argument("--rows", type=int, default=ROWS)
+    parser.add_argument("--lang", choices=["zh", "en"], default=None)
     args = parser.parse_args()
 
     frames = drive(
-        demo_script(), settle=args.settle, seed=args.seed, cols=args.cols, rows=args.rows
+        demo_script(),
+        settle=args.settle,
+        seed=args.seed,
+        cols=args.cols,
+        rows=args.rows,
+        lang=args.lang,
     )
     for label, frame in frames[-args.last :] if args.last else frames:
         print("=" * args.cols)

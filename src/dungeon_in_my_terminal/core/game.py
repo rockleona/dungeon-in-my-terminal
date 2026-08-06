@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .. import i18n
 from . import (
     combat,
     dice,
@@ -150,10 +151,10 @@ class RollReport:
         if self.check is None:
             return ""
         if self.check.critical:
-            return "重擊！"
+            return i18n.t("重擊！")
         if self.check.fumble:
-            return "大失敗"
-        return "命中" if self.check.success else "落空"
+            return i18n.t("大失敗")
+        return i18n.t("命中") if self.check.success else i18n.t("落空")
 
 
 class World:
@@ -302,7 +303,7 @@ class World:
         return sorted({hero.owner for hero in self.party if hero.owner is not None})
 
     def seat_label(self, seat: int | None) -> str:
-        return "" if seat is None else f"玩家 {seat + 1}"
+        return "" if seat is None else i18n.t("玩家 {n}", n=seat + 1)
 
     def heroes_of(self, seat: int | None) -> list[Entity]:
         return [hero for hero in self.party if hero.owner == seat]
@@ -330,10 +331,11 @@ class World:
         self.round = 1
         self._ticked = set()
 
-        headline = "王房" if self.dungeon.is_boss_floor else "第 %d 層" % depth
-        self.log(f"── 進入{headline}（深度 {depth}） ──", "system")
         if self.dungeon.is_boss_floor:
-            self.log("空氣變得沉重，前方傳來腳步聲。", "warn")
+            self.log(i18n.t("── 進入王房（深度 {depth}） ──", depth=depth), "system")
+            self.log(i18n.t("空氣變得沉重，前方傳來腳步聲。"), "warn")
+        else:
+            self.log(i18n.t("── 進入第 {depth} 層（深度 {depth}） ──", depth=depth), "system")
         self._begin_turn()
         self._run_monster_turns()
 
@@ -435,12 +437,21 @@ class World:
             self._ticked.add(id(actor))
             for status in actor.tick_statuses():
                 if actor.team is Team.PARTY or self.can_see(actor):
-                    self.log(f"{actor.name} 的{status.label}結束了。", "info")
+                    self.log(
+                        i18n.t(
+                            "{name} 的{status}結束了。",
+                            name=i18n.t(actor.name),
+                            status=status.label,
+                        ),
+                        "info",
+                    )
 
         self.turn = TurnState(moves_left=actor.effective_speed, action_used=False)
 
         if actor.team is Team.PARTY and actor.has(Status.STUNNED):
-            self.log(f"{actor.name} 暈眩中，跳過這個回合。", "warn")
+            self.log(
+                i18n.t("{name} 暈眩中，跳過這個回合。", name=i18n.t(actor.name)), "warn"
+            )
             self.end_turn()
 
     def end_turn(self) -> None:
@@ -488,7 +499,7 @@ class World:
         if hero is None:
             return False
         if self.turn.moves_left <= 0:
-            self.log("這回合的移動力用完了（按 e 結束回合）。", "warn")
+            self.log(i18n.t("這回合的移動力用完了（按 e 結束回合）。"), "warn")
             return False
 
         spot = (hero.x + dx, hero.y + dy)
@@ -497,9 +508,19 @@ class World:
         blocker = self.entity_at(spot)
         if blocker is not None:
             if blocker.team is Team.MONSTER:
-                self.log(f"{blocker.name} 擋在那裡 — 用攻擊而不是走過去。", "warn")
+                self.log(
+                    i18n.t(
+                        "{name} 擋在那裡 — 用攻擊而不是走過去。", name=i18n.t(blocker.name)
+                    ),
+                    "warn",
+                )
             else:
-                self.log(f"{blocker.name} 站在那裡，繞過去或請他先動（Tab）。", "warn")
+                self.log(
+                    i18n.t(
+                        "{name} 站在那裡，繞過去或請他先動（Tab）。", name=i18n.t(blocker.name)
+                    ),
+                    "warn",
+                )
             return False
 
         hero.position = spot
@@ -513,7 +534,7 @@ class World:
         if chest is not None:
             self._open_chest(hero, chest)
         if hero.position == self.dungeon.stairs:
-            self.log("這裡有往下的樓梯（按 > 帶隊下樓）。", "info")
+            self.log(i18n.t("這裡有往下的樓梯（按 > 帶隊下樓）。"), "info")
 
     def _open_chest(self, hero: Entity, chest: Chest) -> None:
         chest.opened = True
@@ -522,7 +543,15 @@ class World:
         self.score.chests_opened += 1
         loot = items_mod.roll_loot(self.rng)
         self.inventory[loot.id] = self.inventory.get(loot.id, 0) + 1
-        self.log(f"{hero.name} 打開了寶箱：{gold} 金幣、{loot.name} x1。", "loot")
+        self.log(
+            i18n.t(
+                "{name} 打開了寶箱：{gold} 金幣、{item} x1。",
+                name=i18n.t(hero.name),
+                gold=gold,
+                item=i18n.t(loot.name),
+            ),
+            "loot",
+        )
 
     # -- gold, experience and the merchant --------------------------------- #
 
@@ -549,7 +578,7 @@ class World:
     def _level_up(self) -> None:
         self.level += 1
         bump_stat = self.level % STAT_UP_EVERY == 0
-        self.log(f"隊伍升到了 {self.level} 級！", "level")
+        self.log(i18n.t("隊伍升到了 {level} 級！", level=self.level), "level")
         for hero in self.party:
             if not hero.is_alive:
                 continue  # the fallen do not come back to level up
@@ -570,8 +599,8 @@ class World:
             if bump_stat and isinstance(cls, HeroClass):
                 stat = cls.primary_stat
                 setattr(hero.stats, stat, getattr(hero.stats, stat) + STAT_UP_AMOUNT)
-                gains.append(f"{STAT_NAMES[stat]}+{STAT_UP_AMOUNT}")
-            self.log(f"{hero.name} {' '.join(gains)}", "level")
+                gains.append(f"{i18n.t(STAT_NAMES[stat])}+{STAT_UP_AMOUNT}")
+            self.log(f"{i18n.t(hero.name)} {' '.join(gains)}", "level")
 
     def shop_gear(self) -> list[Gear]:
         """Gear the merchant offers at the current depth."""
@@ -585,20 +614,31 @@ class World:
         if price is None:
             return False
         if self.gold < price:
-            self.log("金幣不夠。", "warn")
+            self.log(i18n.t("金幣不夠。"), "warn")
             return False
         self.gold -= price
         self.inventory[item.id] = self.inventory.get(item.id, 0) + 1
-        self.log(f"買下了{item.name}（-{price} 金幣）。", "loot")
+        self.log(
+            i18n.t("買下了{item}（-{price} 金幣）。", item=i18n.t(item.name), price=price),
+            "loot",
+        )
         return True
 
     def buy_gear(self, gear: Gear, hero: Entity) -> bool:
         if self.gold < gear.price:
-            self.log("金幣不夠。", "warn")
+            self.log(i18n.t("金幣不夠。"), "warn")
             return False
         self.gold -= gear.price
         self._equip(hero, gear)
-        self.log(f"{hero.name} 裝備了{gear.name}（-{gear.price} 金幣）。", "loot")
+        self.log(
+            i18n.t(
+                "{name} 裝備了{gear}（-{price} 金幣）。",
+                name=i18n.t(hero.name),
+                gear=i18n.t(gear.name),
+                price=gear.price,
+            ),
+            "loot",
+        )
         return True
 
     def _equip(self, hero: Entity, gear: Gear) -> None:
@@ -623,7 +663,7 @@ class World:
         if hero is None:
             return False
         if self.turn.action_used:
-            self.log("這回合的主要行動已經用過了（按 e 結束回合）。", "warn")
+            self.log(i18n.t("這回合的主要行動已經用過了（按 e 結束回合）。"), "warn")
             return False
 
         if not combat.resolve(self, hero, ability, target):
@@ -639,10 +679,10 @@ class World:
         if hero is None:
             return False
         if self.inventory.get(item.id, 0) <= 0:
-            self.log(f"沒有{item.name}了。", "warn")
+            self.log(i18n.t("沒有{item}了。", item=i18n.t(item.name)), "warn")
             return False
         if self.turn.action_used:
-            self.log("這回合的主要行動已經用過了（按 e 結束回合）。", "warn")
+            self.log(i18n.t("這回合的主要行動已經用過了（按 e 結束回合）。"), "warn")
             return False
 
         if item.ability.target is TargetKind.SELF:
@@ -663,10 +703,10 @@ class World:
         if hero is None:
             return False
         if hero.position != self.dungeon.stairs:
-            self.log("要站在樓梯 ( > ) 上才能下樓。", "warn")
+            self.log(i18n.t("要站在樓梯 ( > ) 上才能下樓。"), "warn")
             return False
         if self.depth >= dungeon_mod.MAX_DEPTH:
-            self.log("這裡已經是最深的一層了。", "warn")
+            self.log(i18n.t("這裡已經是最深的一層了。"), "warn")
             return False
 
         for member in self.living(Team.PARTY):
@@ -674,7 +714,7 @@ class World:
             member.mp = min(member.max_mp, member.mp + int(member.max_mp * REST_MP_FRACTION))
             member.statuses.clear()
             member.taunted_by = None
-        self.log("隊伍在樓梯口稍作休息，恢復了一些狀態。", "heal")
+        self.log(i18n.t("隊伍在樓梯口稍作休息，恢復了一些狀態。"), "heal")
         self.enter_floor(self.depth + 1)
         return True
 
@@ -688,7 +728,7 @@ class World:
         if hero is None:
             return False
         if self.turn.action_used or self.turn.moves_left < hero.effective_speed:
-            self.log("已經開始行動了，這回合不能再換人。", "warn")
+            self.log(i18n.t("已經開始行動了，這回合不能再換人。"), "warn")
             return False
 
         for index in range(self.turn_index + 1, len(self.order)):
@@ -696,17 +736,24 @@ class World:
             if other.is_alive and other.team is Team.PARTY:
                 self.order[self.turn_index], self.order[index] = other, hero
                 self.turn = TurnState(moves_left=other.effective_speed, action_used=False)
-                self.log(f"{hero.name} 讓 {other.name} 先行動。", "info")
+                self.log(
+                    i18n.t(
+                        "{name} 讓 {other} 先行動。",
+                        name=i18n.t(hero.name),
+                        other=i18n.t(other.name),
+                    ),
+                    "info",
+                )
                 self._begin_turn()
                 return True
 
-        self.log("本回合已經沒有其他還沒行動的隊友了。", "warn")
+        self.log(i18n.t("本回合已經沒有其他還沒行動的隊友了。"), "warn")
         return False
 
     def wait(self) -> None:
         hero = self.hero
         if hero is not None:
-            self.log(f"{hero.name} 原地戒備。", "info")
+            self.log(i18n.t("{name} 原地戒備。", name=i18n.t(hero.name)), "info")
         self.end_turn()
 
     @property
@@ -733,12 +780,25 @@ class World:
                 self.score.kills_by_seat[killer.owner] = (
                     self.score.kills_by_seat.get(killer.owner, 0) + 1
                 )
-            self.log(f"{victim.name} 倒下了！", "death")
+            self.log(
+                i18n.t("{name} 倒下了！", name=i18n.t(victim.name)), "death"
+            )
         else:
             self.score.fallen.append(victim.name)
-            self.log(f"{victim.name} 倒下了 — 這趟旅程到此為止。", "death")
+            self.log(
+                i18n.t(
+                    "{name} 倒下了 — 這趟旅程到此為止。", name=i18n.t(victim.name)
+                ),
+                "death",
+            )
             if victim.owner is not None and self.seat_is_out(victim.owner):
-                self.log(f"{self.seat_label(victim.owner)} 已經出局，剩下的路交給隊友了。", "system")
+                self.log(
+                    i18n.t(
+                        "{seat} 已經出局，剩下的路交給隊友了。",
+                        seat=self.seat_label(victim.owner),
+                    ),
+                    "system",
+                )
         for other in self.entities:
             if other.taunted_by is victim:
                 other.taunted_by = None
@@ -748,7 +808,7 @@ class World:
     def _check_defeat(self) -> None:
         if self.phase is Phase.PLAYING and not self.living(Team.PARTY):
             self.phase = Phase.DEFEAT
-            self.log("全隊覆滅。地城重歸寂靜。", "system")
+            self.log(i18n.t("全隊覆滅。地城重歸寂靜。"), "system")
 
     def _check_victory(self) -> None:
         if self.phase is not Phase.PLAYING or self.depth < dungeon_mod.MAX_DEPTH:
@@ -763,7 +823,9 @@ class World:
             return
         self.phase = Phase.VICTORY
         self.score.victory = True
-        self.log(f"{boss.name} 倒下了。你們活著走出了地城！", "system")
+        self.log(
+            i18n.t("{name} 倒下了。你們活著走出了地城！", name=i18n.t(boss.name)), "system"
+        )
 
     @property
     def is_over(self) -> bool:

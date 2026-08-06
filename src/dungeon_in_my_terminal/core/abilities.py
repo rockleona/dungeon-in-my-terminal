@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from .. import i18n
 from .entity import Status
 
 
@@ -54,4 +55,4 @@ class Ability:
         return self.target is not TargetKind.SELF
 
     def cost_label(self) -> str:
-        return f"{self.mp_cost}MP" if self.mp_cost else "免費"
+        return f"{self.mp_cost}MP" if self.mp_cost else i18n.t("免費")

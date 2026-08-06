@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .. import i18n
 from . import dice
 from .abilities import Ability, AbilityKind, TargetKind
 from .dungeon import distance, find_path, has_line_of_sight
@@ -86,11 +87,11 @@ def affordable(actor: Entity, ability: Ability) -> bool:
 def blocked_reason(world: "World", actor: Entity, ability: Ability) -> str | None:
     """Why this ability can't be used, or ``None`` if it can."""
     if not affordable(actor, ability):
-        return f"魔力不足（需要 {ability.mp_cost}MP）"
+        return i18n.t("魔力不足（需要 {cost}MP）", cost=ability.mp_cost)
     if ability.target is TargetKind.TILE or ability.target is TargetKind.SELF:
         return None
     if not valid_targets(world, actor, ability):
-        return "射程內沒有目標"
+        return i18n.t("射程內沒有目標")
     return None
 
 
@@ -201,15 +202,22 @@ def resolve(
 ) -> bool:
     """Apply ``ability``. Returns False (and logs why) if it could not be used."""
     if not affordable(actor, ability):
-        world.log(f"{actor.name} 的魔力不足以施放 {ability.name}。", "warn")
+        world.log(
+            i18n.t(
+                "{name} 的魔力不足以施放 {ability}。",
+                name=i18n.t(actor.name),
+                ability=i18n.t(ability.name),
+            ),
+            "warn",
+        )
         return False
 
     spot = _target_spot(actor, target)
     if ability.target is not TargetKind.SELF and spot is None:
-        world.log(f"{ability.name} 需要一個目標。", "warn")
+        world.log(i18n.t("{ability} 需要一個目標。", ability=i18n.t(ability.name)), "warn")
         return False
     if spot is not None and ability.reach and not in_range(world, actor, ability, spot):
-        world.log(f"{ability.name} 打不到那裡。", "warn")
+        world.log(i18n.t("{ability} 打不到那裡。", ability=i18n.t(ability.name)), "warn")
         return False
 
     actor.spend_mp(ability.mp_cost)
@@ -243,15 +251,17 @@ def _resolve_attack(
     world: "World", actor: Entity, ability: Ability, target: Entity | tuple[int, int] | None
 ) -> None:
     if not isinstance(target, Entity):
-        world.log(f"{ability.name} 需要指定一個單位。", "warn")
+        world.log(i18n.t("{ability} 需要指定一個單位。", ability=i18n.t(ability.name)), "warn")
         return
 
     for swing in range(ability.hits):
         if not target.is_alive:
             break
-        label = f"{actor.name} 的 {ability.name}"
+        label = i18n.t(
+            "{name} 的 {ability}", name=i18n.t(actor.name), ability=i18n.t(ability.name)
+        )
         if ability.hits > 1:
-            label += f"（第 {swing + 1} 擊）"
+            label += i18n.t("（第 {n} 擊）", n=swing + 1)
         result = dice.check(
             world.rng,
             actor.attack_modifier(ability.stat),
@@ -259,7 +269,7 @@ def _resolve_attack(
             advantage=ability.advantage,
         )
         report = world.note_roll(actor, ability.name, target, result)
-        world.log(f"{label} → {target.name}: {result.describe()}", "roll")
+        world.log(f"{label} → {i18n.t(target.name)}: {result.describe()}", "roll")
 
         if not result.success:
             continue
@@ -272,12 +282,28 @@ def _resolve_attack(
         )
         report.damage = damage
         dealt = target.take_damage(damage.total)
-        world.log(f"  傷害 {damage.describe()} → {target.name} 損失 {dealt} 點生命。", "damage")
+        world.log(
+            i18n.t(
+                "  傷害 {damage} → {target} 損失 {dealt} 點生命。",
+                damage=damage.describe(),
+                target=i18n.t(target.name),
+                dealt=dealt,
+            ),
+            "damage",
+        )
         _wake(target, actor)
 
         if ability.status and target.is_alive:
             target.apply(ability.status, ability.status_rounds)
-            world.log(f"  {target.name} 陷入{ability.status.label}（{ability.status_rounds} 回合）。", "info")
+            world.log(
+                i18n.t(
+                    "  {target} 陷入{status}（{rounds} 回合）。",
+                    target=i18n.t(target.name),
+                    status=ability.status.label,
+                    rounds=ability.status_rounds,
+                ),
+                "info",
+            )
 
         if not target.is_alive:
             world.kill(target, actor)
@@ -304,7 +330,10 @@ def burst_victims(
 
 
 def _resolve_burst(world: "World", actor: Entity, ability: Ability, centre: tuple[int, int]) -> None:
-    world.log(f"{actor.name} 施放 {ability.name}！", "roll")
+    world.log(
+        i18n.t("{name} 施放 {ability}！", name=i18n.t(actor.name), ability=i18n.t(ability.name)),
+        "roll",
+    )
     for victim in burst_victims(world, actor, ability, centre):
         if not victim.is_alive:
             continue  # an earlier blast in this same burst already felled them
@@ -312,12 +341,25 @@ def _resolve_burst(world: "World", actor: Entity, ability: Ability, centre: tupl
         damage = dice.roll(world.rng, ability.damage or "1d6")
         world.note_roll(actor, ability.name, victim).damage = damage
         dealt = victim.take_damage(damage.total)
-        world.log(f"  {victim.name} 被波及 {damage.describe()} → 損失 {dealt} 點生命。", "damage")
+        world.log(
+            i18n.t(
+                "  {victim} 被波及 {damage} → 損失 {dealt} 點生命。",
+                victim=i18n.t(victim.name),
+                damage=damage.describe(),
+                dealt=dealt,
+            ),
+            "damage",
+        )
         _wake(victim, actor)
 
         if ability.status and victim.is_alive and is_hostile(actor, victim):
             victim.apply(ability.status, ability.status_rounds)
-            world.log(f"  {victim.name} 陷入{ability.status.label}。", "info")
+            world.log(
+                i18n.t(
+                    "  {victim} 陷入{status}。", victim=i18n.t(victim.name), status=ability.status.label
+                ),
+                "info",
+            )
 
         if not victim.is_alive:
             world.kill(victim, actor)
@@ -332,7 +374,14 @@ def _resolve_heal(
     world.note_roll(actor, ability.name, target).healing = roll
     healed = target.restore(roll.total)
     world.log(
-        f"{actor.name} 對 {target.name} 施放 {ability.name}: {roll.describe()} → 回復 {healed} 點生命。",
+        i18n.t(
+            "{actor} 對 {target} 施放 {ability}: {roll} → 回復 {healed} 點生命。",
+            actor=i18n.t(actor.name),
+            target=i18n.t(target.name),
+            ability=i18n.t(ability.name),
+            roll=roll.describe(),
+            healed=healed,
+        ),
         "heal",
     )
 
@@ -345,7 +394,10 @@ def _resolve_restore(
     roll = dice.roll(world.rng, ability.healing or "1d4")
     gained = min(target.max_mp - target.mp, roll.total)
     target.mp += gained
-    world.log(f"{target.name} 回復了 {gained} 點魔力。", "heal")
+    world.log(
+        i18n.t("{target} 回復了 {gained} 點魔力。", target=i18n.t(target.name), gained=gained),
+        "heal",
+    )
 
 
 def _resolve_buff(
@@ -356,8 +408,14 @@ def _resolve_buff(
     if ability.status:
         target.apply(ability.status, ability.status_rounds)
         world.log(
-            f"{actor.name} 對 {target.name} 施放 {ability.name}"
-            f" → {ability.status.label} {ability.status_rounds} 回合。",
+            i18n.t(
+                "{actor} 對 {target} 施放 {ability} → {status} {rounds} 回合。",
+                actor=i18n.t(actor.name),
+                target=i18n.t(target.name),
+                ability=i18n.t(ability.name),
+                status=ability.status.label,
+                rounds=ability.status_rounds,
+            ),
             "heal",
         )
 
@@ -373,7 +431,12 @@ def _resolve_taunt(world: "World", actor: Entity, ability: Ability) -> None:
         enemy.taunted_by = actor
         enemy.awake = True
         pulled += 1
-    world.log(f"{actor.name} 大吼挑釁，{pulled} 個敵人被激怒了！", "info")
+    world.log(
+        i18n.t(
+            "{name} 大吼挑釁，{n} 個敵人被激怒了！", name=i18n.t(actor.name), n=pulled
+        ),
+        "info",
+    )
 
 
 def _wake(entity: Entity, source: Entity) -> None:
@@ -451,10 +514,12 @@ def take_monster_turn(world: "World", monster: Entity) -> None:
         if not should_wake(world, monster):
             return
         monster.awake = True
-        world.log(f"{monster.name} 注意到了你們！", "warn")
+        world.log(i18n.t("{name} 注意到了你們！", name=i18n.t(monster.name)), "warn")
 
     if monster.has(Status.STUNNED):
-        world.log(f"{monster.name} 還在暈眩，這回合無法行動。", "info")
+        world.log(
+            i18n.t("{name} 還在暈眩，這回合無法行動。", name=i18n.t(monster.name)), "info"
+        )
         return
 
     target = choose_target(world, monster)

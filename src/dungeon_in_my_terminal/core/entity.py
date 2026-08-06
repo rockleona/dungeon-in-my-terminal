@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from .. import i18n
+
 if TYPE_CHECKING:  # pragma: no cover - avoids an abilities <-> entity import cycle
     from .abilities import Ability
     from .dungeon import Room
@@ -32,12 +34,15 @@ class Status(str, Enum):
 
     @property
     def label(self) -> str:
-        return {
-            Status.STUNNED: "暈眩",
-            Status.SLOWED: "緩速",
-            Status.BLESSED: "祝福",
-            Status.TAUNTED: "被挑釁",
-        }[self]
+        return i18n.t(
+            {
+                Status.STUNNED: "暈眩",
+                Status.SLOWED: "緩速",
+                Status.BLESSED: "祝福",
+                Status.TAUNTED: "被挑釁",
+            }[self],
+            _ctx="status",
+        )
 
 
 @dataclass
