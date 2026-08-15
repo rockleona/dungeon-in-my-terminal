@@ -11,6 +11,8 @@ import random
 import re
 from dataclasses import dataclass, field
 
+from .. import i18n
+
 DICE_PATTERN = re.compile(r"^\s*(\d*)d(\d+)\s*([+-]\s*\d+)?\s*$", re.IGNORECASE)
 
 
@@ -67,9 +69,19 @@ class Check:
     def describe(self) -> str:
         rolled = f"d20={self.natural}"
         if self.advantage_roll is not None:
-            rolled = f"d20={self.natural}(優勢, 另一顆 {self.advantage_roll})"
-        verdict = "重擊!" if self.critical else "大失敗!" if self.fumble else (
-            "命中" if self.success else "落空"
+            rolled = i18n.t(
+                "d20={natural}(優勢, 另一顆 {other})",
+                natural=self.natural,
+                other=self.advantage_roll,
+            )
+        verdict = (
+            i18n.t("重擊!")
+            if self.critical
+            else i18n.t("大失敗!")
+            if self.fumble
+            else i18n.t("命中")
+            if self.success
+            else i18n.t("落空")
         )
         return f"{rolled}{self.modifier:+d} = {self.total} vs {self.target} → {verdict}"
 
@@ -78,7 +90,7 @@ def parse(expression: str) -> tuple[int, int, int]:
     """Parse ``"2d6+3"`` into ``(count, faces, modifier)``."""
     match = DICE_PATTERN.match(expression)
     if not match:
-        raise ValueError(f"看不懂的骰子式: {expression!r}")
+        raise ValueError(i18n.t("看不懂的骰子式: {expr!r}", expr=expression))
     count_text, faces_text, modifier_text = match.groups()
     count = int(count_text) if count_text else 1
     modifier = int(modifier_text.replace(" ", "")) if modifier_text else 0

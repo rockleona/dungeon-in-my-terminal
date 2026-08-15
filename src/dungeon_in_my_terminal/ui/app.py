@@ -6,6 +6,7 @@ import curses
 import locale
 import random
 
+from .. import i18n
 from ..core import classes as classes_mod, combat, items as items_mod
 from ..core.abilities import Ability, TargetKind
 from ..core.dungeon import MAX_DEPTH, distance
@@ -99,9 +100,15 @@ class App:
         if height >= render.MIN_HEIGHT and width >= render.MIN_WIDTH:
             return False
         self.screen.erase()
-        write(self.screen, 0, 0, "終端機視窗太小了。", colour("yellow", bold=True))
-        write(self.screen, 1, 0, f"請放大到至少 {render.MIN_WIDTH} x {render.MIN_HEIGHT}", colour("white"))
-        write(self.screen, 2, 0, f"目前 {width} x {height}", colour("white", dim=True))
+        write(self.screen, 0, 0, i18n.t("終端機視窗太小了。"), colour("yellow", bold=True))
+        write(
+            self.screen,
+            1,
+            0,
+            i18n.t("請放大到至少 {w} x {h}", w=render.MIN_WIDTH, h=render.MIN_HEIGHT),
+            colour("white"),
+        )
+        write(self.screen, 2, 0, i18n.t("目前 {w} x {h}", w=width, h=height), colour("white", dim=True))
         self.screen.refresh()
         return True
 
@@ -118,11 +125,11 @@ class App:
             for index, line in enumerate(TITLE):
                 if render.text_width(line) < width:
                     centre(self.screen, top + index, line, colour("magenta", bold=True))
-            centre(self.screen, top + 7, "終端機裡的地城 ‧ 骰子驅動的回合制探索", colour("cyan"))
-            centre(self.screen, top + 9, "[1]  單人模式 — 一人指揮整支隊伍", colour("white", bold=True))
-            centre(self.screen, top + 10, "[2]  多人 Hotseat — 2-4 人輪流用同一台電腦", colour("white", bold=True))
-            centre(self.screen, top + 11, "[3]  操作說明", colour("white"))
-            centre(self.screen, top + 12, "[q]  離開", colour("white"))
+            centre(self.screen, top + 7, i18n.t("終端機裡的地城 ‧ 骰子驅動的回合制探索"), colour("cyan"))
+            centre(self.screen, top + 9, i18n.t("[1]  單人模式 — 一人指揮整支隊伍"), colour("white", bold=True))
+            centre(self.screen, top + 10, i18n.t("[2]  多人 Hotseat — 2-4 人輪流用同一台電腦"), colour("white", bold=True))
+            centre(self.screen, top + 11, i18n.t("[3]  操作說明"), colour("white"))
+            centre(self.screen, top + 12, i18n.t("[q]  離開"), colour("white"))
             self.screen.refresh()
 
             key = self.screen.getch()
@@ -143,12 +150,22 @@ class App:
             self.screen.erase()
             height, _ = self.screen.getmaxyx()
             top = max(0, height // 2 - 5)
-            centre(self.screen, top, "多人 Hotseat", colour("cyan", bold=True))
-            centre(self.screen, top + 2, "有幾個人要玩？", colour("white", bold=True))
+            centre(self.screen, top, i18n.t("多人 Hotseat"), colour("cyan", bold=True))
+            centre(self.screen, top + 2, i18n.t("有幾個人要玩？"), colour("white", bold=True))
             for offset, count in enumerate((2, 3, 4)):
-                centre(self.screen, top + 4 + offset, f"[{count}]  {count} 人", colour("white"))
-            centre(self.screen, top + 9, "每個人至少操作一名角色，隊伍最多 4 人。", colour("white", dim=True))
-            centre(self.screen, top + 10, "Esc 返回", colour("white", dim=True))
+                centre(
+                    self.screen,
+                    top + 4 + offset,
+                    i18n.t("[{count}]  {count} 人", count=count),
+                    colour("white"),
+                )
+            centre(
+                self.screen,
+                top + 9,
+                i18n.t("每個人至少操作一名角色，隊伍最多 4 人。"),
+                colour("white", dim=True),
+            )
+            centre(self.screen, top + 10, i18n.t("Esc 返回"), colour("white", dim=True))
             self.screen.refresh()
 
             key = self.screen.getch()
@@ -183,42 +200,68 @@ class App:
                 centre(
                     self.screen,
                     1,
-                    f"組隊 — 輪到 玩家 {turn_of + 1} 選擇（{players} 人，隊伍最多 4 人）",
+                    i18n.t(
+                        "組隊 — 輪到 玩家 {n} 選擇（{players} 人，隊伍最多 4 人）",
+                        n=turn_of + 1,
+                        players=players,
+                    ),
                     colour("cyan", bold=True),
                 )
             else:
-                centre(self.screen, 1, "組隊 — 最多 4 人，職業可以重複", colour("cyan", bold=True))
+                centre(self.screen, 1, i18n.t("組隊 — 最多 4 人，職業可以重複"), colour("cyan", bold=True))
 
             for index, hero in enumerate(classes_mod.CLASSES):
                 row = 3 + index * 3
-                write(self.screen, row, 4, f"[{index + 1}] {hero.name}", colour(hero.color, bold=True))
-                write(self.screen, row, 18, hero.role, colour("white"))
+                write(
+                    self.screen,
+                    row,
+                    4,
+                    f"[{index + 1}] {i18n.t(hero.name)}",
+                    colour(hero.color, bold=True),
+                )
+                write(self.screen, row, 18, render.clip(i18n.t(hero.role), 17), colour("white"))
                 write(
                     self.screen,
                     row,
                     36,
-                    f"HP {hero.max_hp}  MP {hero.max_mp}  AC {hero.armor_class}  移動 {hero.speed}",
+                    i18n.t(
+                        "HP {hp}  MP {mp}  AC {ac}  移動 {speed}",
+                        hp=hero.max_hp,
+                        mp=hero.max_mp,
+                        ac=hero.armor_class,
+                        speed=hero.speed,
+                    ),
                     colour("white", dim=True),
                 )
-                write(self.screen, row + 1, 8, render.clip(hero.blurb, width - 12), colour("white", dim=True))
+                write(
+                    self.screen,
+                    row + 1,
+                    8,
+                    render.clip(i18n.t(hero.blurb), width - 12),
+                    colour("white", dim=True),
+                )
 
             if picked:
                 roster = "  ".join(
-                    (f"玩家 {seats[i] + 1}：{h.name}" if players else f"{i + 1}. {h.name}")
+                    (
+                        i18n.t("玩家 {n}：{name}", n=seats[i] + 1, name=i18n.t(h.name))
+                        if players
+                        else f"{i + 1}. {i18n.t(h.name)}"
+                    )
                     for i, h in enumerate(picked)
                 )
             else:
-                roster = "（還沒有人）"
+                roster = i18n.t("（還沒有人）")
             roster_row = 3 + len(classes_mod.CLASSES) * 3
-            write(self.screen, roster_row, 4, "隊伍：", colour("yellow", bold=True))
+            write(self.screen, roster_row, 4, i18n.t("隊伍："), colour("yellow", bold=True))
             write(self.screen, roster_row, 12, render.clip(roster, width - 14), colour("yellow"))
 
-            hints = ["數字鍵加入", "Backspace 移除"]
+            hints = [i18n.t("數字鍵加入"), i18n.t("Backspace 移除")]
             if enough:
-                hints.append("Enter 出發")
+                hints.append(i18n.t("Enter 出發"))
             elif players:
-                hints.append(f"還有 {players - len(picked)} 人要選")
-            hints.append("Esc 返回")
+                hints.append(i18n.t("還有 {n} 人要選", n=players - len(picked)))
+            hints.append(i18n.t("Esc 返回"))
             centre(
                 self.screen,
                 min(height - 2, roster_row + 2),
@@ -229,7 +272,7 @@ class App:
                 centre(
                     self.screen,
                     min(height - 3, roster_row + 1),
-                    "還可以再加角色，多出來的會輪流分給各位玩家。",
+                    i18n.t("還可以再加角色，多出來的會輪流分給各位玩家。"),
                     colour("white", dim=True),
                 )
             self.screen.refresh()
@@ -325,9 +368,9 @@ class App:
         elif key in (ord("h"), ord("?")):
             self.show_help()
         elif key == ord("q"):
-            if self.confirm("要放棄這一局嗎？（這局的隊伍不會保留）"):
+            if self.confirm(i18n.t("要放棄這一局嗎？（這局的隊伍不會保留）")):
                 world.phase = Phase.DEFEAT
-                world.log("你們決定撤退 — 但地城不接受撤退。", "system")
+                world.log(i18n.t("你們決定撤退 — 但地城不接受撤退。"), "system")
                 return "abort"
         return None
 
@@ -402,7 +445,7 @@ class App:
                 elif world.gold >= price:
                     pending = obj  # gear needs a wearer next
                 else:
-                    world.log("金幣不夠。", "warn")
+                    world.log(i18n.t("金幣不夠。"), "warn")
 
     def use_ability(self, hero: Entity, ability: Ability) -> None:
         world = self.world
@@ -410,7 +453,10 @@ class App:
 
         reason = combat.blocked_reason(world, hero, ability)
         if reason:
-            world.log(f"{ability.name}：{reason}。", "warn")
+            world.log(
+                i18n.t("{ability}：{reason}。", ability=i18n.t(ability.name), reason=reason),
+                "warn",
+            )
             return
 
         if ability.target is TargetKind.SELF and ability.radius > 0:
@@ -475,14 +521,14 @@ class App:
         assert world is not None
         splash = render.splash_tiles(world, ability, hero.position)
         caught = combat.burst_victims(world, hero, ability, hero.position)
-        names = "、".join(e.name for e in caught)
+        names = "、".join(i18n.t(e.name) for e in caught)
         preview = render.Forecast(
-            ability=ability.name,
-            target=f"以 {hero.name} 為中心",
+            ability=i18n.t(ability.name),
+            target=i18n.t("以 {name} 為中心", name=i18n.t(hero.name)),
             hits_on=None,
-            detail=f"波及 {names}" if caught else "目前不會打到任何人",
+            detail=i18n.t("波及 {names}", names=names) if caught else i18n.t("目前不會打到任何人"),
         )
-        hint = "Enter 施放 ‧ Esc 取消"
+        hint = i18n.t("Enter 施放 ‧ Esc 取消")
         while True:
             self.draw(cursor=hero.position, splash=splash, hint=hint, forecast=preview)
             key = self.screen.getch()
@@ -496,7 +542,9 @@ class App:
         assert world is not None
         candidates = combat.valid_targets(world, hero, ability)
         if not candidates:
-            world.log(f"{ability.name}：射程內沒有目標。", "warn")
+            world.log(
+                i18n.t("{ability}：射程內沒有目標。", ability=i18n.t(ability.name)), "warn"
+            )
             return None
 
         index = 0
@@ -504,13 +552,13 @@ class App:
             target = candidates[index]
             odds = combat.forecast(world, hero, ability, target)
             preview = render.Forecast(
-                ability=ability.name,
-                target=target.name,
+                ability=i18n.t(ability.name),
+                target=i18n.t(target.name),
                 hits_on=odds[0] if odds else None,
                 crits_on=odds[1] if odds else 20,
                 detail=f"HP {target.hp}/{target.max_hp} ‧ AC {target.armor_class}",
             )
-            hint = "Tab 換目標 ‧ Enter 確認 ‧ Esc 取消"
+            hint = i18n.t("Tab 換目標 ‧ Enter 確認 ‧ Esc 取消")
             self.draw(cursor=target.position, hint=hint, forecast=preview)
             key = self.screen.getch()
             if key in ENTER_KEYS:
@@ -534,17 +582,19 @@ class App:
             reachable = combat.in_range(world, hero, ability, cursor)
             splash = render.splash_tiles(world, ability, cursor) if reachable else set()
             caught = [
-                e.name
+                i18n.t(e.name)
                 for e in world.living()
                 if e.position in splash and (ability.friendly_fire or e.team is not hero.team)
             ]
             preview = render.Forecast(
-                ability=ability.name,
-                target="這一格" if reachable else "超出射程",
+                ability=i18n.t(ability.name),
+                target=i18n.t("這一格") if reachable else i18n.t("超出射程"),
                 hits_on=None,
-                detail=("波及 " + "、".join(caught)) if caught else "目前不會打到任何人",
+                detail=i18n.t("波及 {names}", names="、".join(caught))
+                if caught
+                else i18n.t("目前不會打到任何人"),
             )
-            hint = "方向鍵選格 ‧ Enter 引爆 ‧ Esc 取消"
+            hint = i18n.t("方向鍵選格 ‧ Enter 引爆 ‧ Esc 取消")
             self.draw(cursor=cursor, splash=splash, hint=hint, forecast=preview)
 
             key = self.screen.getch()
@@ -610,9 +660,9 @@ class App:
         height, width = self.screen.getmaxyx()
         box_w = min(60, width - 4)
         top, left = height // 2 - 2, max(0, (width - box_w) // 2)
-        render.draw_box(self.screen, top, left, 5, box_w, "確認")
+        render.draw_box(self.screen, top, left, 5, box_w, i18n.t("確認"))
         write(self.screen, top + 2, left + 3, render.clip(question, box_w - 6), colour("yellow", bold=True))
-        write(self.screen, top + 3, left + 3, "[y] 是   [n] 否", colour("white", dim=True))
+        write(self.screen, top + 3, left + 3, i18n.t("[y] 是   [n] 否"), colour("white", dim=True))
         self.screen.refresh()
         while True:
             key = self.screen.getch()
@@ -629,9 +679,13 @@ class App:
         for seat in world.seats:
             kills = world.score.kills_by_seat.get(seat, 0)
             heroes = world.heroes_of(seat)
-            survivors = [h.name for h in heroes if h.is_alive]
-            state = "生還：" + "、".join(survivors) if survivors else "全員陣亡"
-            rows.append((seat, kills, f"擊殺 {kills}　{state}"))
+            survivors = [i18n.t(h.name) for h in heroes if h.is_alive]
+            state = (
+                i18n.t("生還：{names}", names="、".join(survivors))
+                if survivors
+                else i18n.t("全員陣亡")
+            )
+            rows.append((seat, kills, i18n.t("擊殺 {kills}　{state}", kills=kills, state=state)))
         rows.sort(key=lambda row: row[1], reverse=True)
         return [(world.seat_label(seat), detail) for seat, _, detail in rows]
 
@@ -642,14 +696,17 @@ class App:
         won = world.phase is Phase.VICTORY
 
         lines = [
-            ("到達層數", f"{score.depth_reached} / {MAX_DEPTH}"),
-            ("隊伍等級", f"Lv {world.level}"),
-            ("擊殺數", str(score.kills)),
-            ("拾獲金幣", str(score.gold)),
-            ("開啟寶箱", str(score.chests_opened)),
-            ("總回合數", str(score.rounds)),
-            ("陣亡", "、".join(score.fallen) or "無"),
-            ("總分", str(score.points)),
+            (i18n.t("到達層數"), f"{score.depth_reached} / {MAX_DEPTH}"),
+            (i18n.t("隊伍等級"), f"Lv {world.level}"),
+            (i18n.t("擊殺數"), str(score.kills)),
+            (i18n.t("拾獲金幣"), str(score.gold)),
+            (i18n.t("開啟寶箱"), str(score.chests_opened)),
+            (i18n.t("總回合數"), str(score.rounds)),
+            (
+                i18n.t("陣亡"),
+                "、".join(i18n.t(name) for name in score.fallen) or i18n.t("無"),
+            ),
+            (i18n.t("總分"), str(score.points)),
         ]
         seat_lines = self._seat_scoreboard(world)
 
@@ -658,11 +715,11 @@ class App:
             height, width = self.screen.getmaxyx()
             top = max(0, height // 2 - 8)
             if won:
-                centre(self.screen, top, "★  地 城 通 關  ★", colour("yellow", bold=True))
-                centre(self.screen, top + 2, "王座空了，你們帶著戰利品走出地城。", colour("green"))
+                centre(self.screen, top, i18n.t("★  地 城 通 關  ★"), colour("yellow", bold=True))
+                centre(self.screen, top + 2, i18n.t("王座空了，你們帶著戰利品走出地城。"), colour("green"))
             else:
-                centre(self.screen, top, "☠  全 隊 覆 滅  ☠", colour("red", bold=True))
-                centre(self.screen, top + 2, "地城吞下了這支隊伍。下一支呢？", colour("magenta"))
+                centre(self.screen, top, i18n.t("☠  全 隊 覆 滅  ☠"), colour("red", bold=True))
+                centre(self.screen, top + 2, i18n.t("地城吞下了這支隊伍。下一支呢？"), colour("magenta"))
 
             for index, (label, value) in enumerate(lines):
                 row = top + 4 + index
@@ -673,15 +730,20 @@ class App:
             row = top + 4 + len(lines)
             if seat_lines:
                 row += 1
-                centre(self.screen, row, "各玩家戰績", colour("yellow", bold=True))
+                centre(self.screen, row, i18n.t("各玩家戰績"), colour("yellow", bold=True))
                 for offset, (label, detail) in enumerate(seat_lines, start=1):
                     left = max(0, width // 2 - 16)
                     write(self.screen, row + offset, left, label, colour("cyan", bold=True))
                     write(self.screen, row + offset, left + 14, detail, colour("white"))
                 row += len(seat_lines)
 
-            centre(self.screen, row + 2, f"種子碼 {world.seed}", colour("white", dim=True))
-            centre(self.screen, row + 4, "[r] 重新產生地城再戰一局    [q] 離開", colour("white", bold=True))
+            centre(self.screen, row + 2, i18n.t("種子碼 {seed}", seed=world.seed), colour("white", dim=True))
+            centre(
+                self.screen,
+                row + 4,
+                i18n.t("[r] 重新產生地城再戰一局    [q] 離開"),
+                colour("white", bold=True),
+            )
             self.screen.refresh()
 
             key = self.screen.getch()

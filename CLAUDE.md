@@ -9,7 +9,8 @@ managed with `uv`.
 ```bash
 uv run dungeon                  # play
 uv run dungeon --seed 4242      # replay one dungeon; the summary screen shows the seed
-uv run pytest                   # full suite (181 tests, ~30s)
+uv run dungeon --lang en        # English UI; default is zh (Traditional Chinese)
+uv run pytest                   # full suite (187 tests, ~30s)
 uv run python tools/tui_drive.py --last 3   # screenshot the real TUI (see Verifying below)
 uv build                        # wheel + sdist in dist/ (pure Python, py3-none-any)
 ```
@@ -23,6 +24,8 @@ entry point or the package name ever changes, they need changing there too.
 ```
 src/dungeon_in_my_terminal/
 ├── cli.py         entry point and flags
+├── i18n.py        language selection and the t() translation function
+├── i18n_strings.py   the English translation table (data only)
 ├── core/          rules — never imports curses
 │   ├── dice.py       d20 checks, "2d6+3" parsing; every random result comes from here
 │   ├── dungeon.py    BSP generation, line of sight, BFS pathing, grid helpers
@@ -110,6 +113,43 @@ Every area effect previews before it fires, self-centred ones included —
 two cannot drift. Spending MP on something the player has not seen the shape
 of is the bug this closed.
 
+## i18n
+
+Traditional Chinese is the default and canonical language; English is
+available via `--lang en`. Every player-facing string — dynamic log lines in
+`game.py`/`combat.py`, static UI chrome in `render.py`/`app.py`, and registry
+data (`classes.py`, `monsters.py`, `items.py`, `shop.py`, `entity.py`'s
+`Status.label`/`STAT_NAMES`, `dice.py`'s verdict words) — must route through
+`i18n.t()`.
+
+The Chinese literal is its own translation key (gettext-msgid style, no
+invented key names): `i18n.t("戰士")` looks up `"戰士"` in
+`i18n_strings.EN`. A missing key falls back to the Chinese source with a
+one-time `warnings.warn` rather than crashing. When the same Chinese string
+needs two unrelated English translations depending on context (the Bless
+*ability* vs. the Blessed *status label*, both written as `祝福`), pass
+`i18n.t(text, _ctx="status")` — the context is folded into the lookup key,
+never into the rendered text.
+
+Registries keep their Chinese literals untouched; translation happens only
+at *display* call sites in `render.py`/`app.py` (`i18n.t(hero.name)`,
+`i18n.t(item.description)`, …) and in the runtime log/message templates built
+in `game.py`/`combat.py`. Never call `i18n.t()` while a registry module is
+importing (`classes.py`, `monsters.py`, …) — that runs before the CLI has
+called `i18n.set_language()`, so the result would be frozen in whatever
+language happened to be active at import time.
+
+New strings need a matching `i18n_strings.EN` entry — `tests/test_i18n.py`
+enforces this two ways: an AST walk catches every literal template passed to
+`i18n.t()`, and an explicit list mirrors which registry fields the UI
+actually reads (a field the UI never displays, e.g. `Ability.description` on
+monster attacks, needs no entry). Neither catches a *variable* key built from a dict lookup, like
+`i18n.t(STAT_NAMES[stat])` — that class of gap only shows up by actually
+running the game in English (`tools/tui_drive.py --lang en`, or a headless
+autoplay sweep with `i18n.set_language("en")` and
+`warnings.simplefilter("always")`), so do that after adding a new dynamic
+message.
+
 ## Verifying changes
 
 Three layers, in increasing cost:
@@ -125,12 +165,16 @@ Three layers, in increasing cost:
 3. `tools/tui_drive.py` — runs the real binary in a pty and prints the screen.
    **Use this for any layout or animation change**; nothing else catches
    misaligned wide characters or a clipped panel. Check `--cols 76` and the
-   documented minimum `--cols 72 --rows 20`, not just your own terminal.
+   documented minimum `--cols 72 --rows 20`, not just your own terminal. Also
+   check `--lang en` — English strings are narrower per-character but often
+   longer overall, and column budgets tuned for Chinese text can overlap or
+   clip without a functional test ever catching it.
 
 ## Conventions
 
-- Code, comments and commit messages in English; everything the player sees is
-  Traditional Chinese.
+- Code, comments and commit messages in English. What the player sees is
+  Traditional Chinese by default, English via `--lang en` — see the i18n
+  section above for how new player-facing strings get both.
 - Conventional Commits, no AI attribution trailer.
 - Comments explain *why*; the codebase is deliberately light on restating what
   the code says.
@@ -187,6 +231,10 @@ levelled fastest put the dumb agent at floor 10 in half its runs.
 
 - No tutorial floor yet — planned last, after the rest of the roster/depth
   work.
+- Only `zh` (default) and `en` exist; `i18n.py`'s design (`TRANSLATIONS: dict[str,
+  dict[str, str]]`) supports more, but nothing beyond the English table has
+  been authored. There is also no in-game language switch — `--lang` is
+  read once at startup.
 - Gear only comes from the merchant; chests still drop consumables, not
   equipment. Fine for now, but a deeper loot table is the obvious next step.
 - **The repo has no remote yet.** The README's install commands point at

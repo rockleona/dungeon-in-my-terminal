@@ -11,6 +11,7 @@ import curses
 import unicodedata
 from dataclasses import dataclass
 
+from .. import i18n
 from ..core.abilities import Ability
 from ..core.dungeon import MAX_DEPTH, TILE_GLYPHS, distance
 from ..core.entity import Entity, Team
@@ -200,7 +201,7 @@ def initiative_label(world: World, entity: Entity) -> str:
     """
     if entity.team is Team.MONSTER and not world.can_see(entity):
         return "?"
-    return f"{entity.glyph} {entity.name}"
+    return f"{entity.glyph} {i18n.t(entity.name)}"
 
 
 def draw_initiative(win, world: World) -> None:
@@ -212,8 +213,9 @@ def draw_initiative(win, world: World) -> None:
     if current is None:
         return
 
-    write(win, 0, 0, "行動順序", colour("blue", bold=True))
-    x = 9
+    label = i18n.t("行動順序")
+    write(win, 0, 0, label, colour("blue", bold=True))
+    x = text_width(label) + 1
     entries = [(current, True)] + [(e, False) for e in world.upcoming(6)]
     for index, (entity, is_current) in enumerate(entries):
         label = initiative_label(world, entity)
@@ -270,16 +272,21 @@ def draw_panel(win, world: World, hint: str = "", forecast: "Forecast | None" = 
     if top < 1:
         return
 
-    header = (
-        f" 第 {world.depth}/{MAX_DEPTH} 層 ‧ 第 {world.round} 回合 ‧ Lv {world.level}"
-        f" ‧ 金幣 {world.gold} ‧ 擊殺 {world.score.kills} "
+    header = i18n.t(
+        " 第 {depth}/{max_depth} 層 ‧ 第 {round} 回合 ‧ Lv {level} ‧ 金幣 {gold} ‧ 擊殺 {kills} ",
+        depth=world.depth,
+        max_depth=MAX_DEPTH,
+        round=world.round,
+        level=world.level,
+        gold=world.gold,
+        kills=world.score.kills,
     )
     write(win, top, 0, "─" * (width - 1), colour("blue"))
     write(win, top, 2, header, colour("cyan", bold=True))
 
     # The one hint that has to be visible without already knowing the keys. It
     # rides the divider because the action column is full at 76 columns.
-    prompt = " [h] 操作說明 "
+    prompt = i18n.t(" [h] 操作說明 ")
     prompt_x = width - 1 - text_width(prompt)
     if prompt_x > 2 + text_width(header):
         write(win, top, prompt_x, prompt, colour("yellow", bold=True))
@@ -307,14 +314,14 @@ def _draw_party_column(win, top: int, x: int, width: int, world: World) -> None:
     row = top + 9
     stock = [(items_id, count) for items_id, count in world.inventory.items() if count > 0]
     if stock:
-        write(win, row, x + 1, "背包", colour("white", dim=True))
+        write(win, row, x + 1, i18n.t("背包"), colour("white", dim=True))
         for offset, (item_id, count) in enumerate(stock[:2], start=1):
             from ..core import items as items_mod
 
-            name = items_mod.BY_ID[item_id].name
+            name = i18n.t(items_mod.BY_ID[item_id].name)
             write(win, row + offset, x + 1, clip(f"{name} x{count}", width - 2), colour("yellow"))
     else:
-        write(win, row, x + 1, "背包是空的", colour("white", dim=True))
+        write(win, row, x + 1, i18n.t("背包是空的"), colour("white", dim=True))
 
 
 def _draw_member(win, row: int, x: int, width: int, member: Entity, world: World, plan: "GaugePlan") -> None:
@@ -323,11 +330,11 @@ def _draw_member(win, row: int, x: int, width: int, member: Entity, world: World
 
     write(win, row, x, "▶" if active else " ", colour("yellow", bold=True))
     tag = f"P{member.owner + 1} " if world.is_hotseat and member.owner is not None else ""
-    name = f"{tag}{member.glyph} {member.name}"
+    name = f"{tag}{member.glyph} {i18n.t(member.name)}"
 
     if not member.is_alive:
         write(win, row, x + 1, clip(name, width - 8), attr)
-        write(win, row, x + width - 7, "已陣亡", colour("white", dim=True))
+        write(win, row, x + width - 7, i18n.t("已陣亡"), colour("white", dim=True))
         return
 
     # Name row: the name, and any status right-aligned. The name clips to what
@@ -430,21 +437,28 @@ def _draw_action_column(
 ) -> None:
     hero = world.hero
     if hero is None:
-        write(win, top, x + 1, "敵方行動中…", colour("magenta", bold=True))
+        write(win, top, x + 1, i18n.t("敵方行動中…"), colour("magenta", bold=True))
     else:
         seat = world.seat_label(hero.owner)
-        title = f"{seat} ‧ {hero.name} 的回合" if seat else f"{hero.name} 的回合"
+        name = i18n.t(hero.name)
+        title = (
+            i18n.t("{seat} ‧ {name} 的回合", seat=seat, name=name)
+            if seat
+            else i18n.t("{name} 的回合", name=name)
+        )
         write(win, top, x + 1, clip(title, width - 2), colour(hero.color, bold=True))
 
-        moves = f"移動 {world.turn.moves_left}/{hero.effective_speed}"
-        action = "主要行動 已用" if world.turn.action_used else "主要行動 可用"
+        moves = i18n.t(
+            "移動 {left}/{speed}", left=world.turn.moves_left, speed=hero.effective_speed
+        )
+        action = i18n.t("主要行動 已用") if world.turn.action_used else i18n.t("主要行動 可用")
         write(win, top + 1, x + 1, moves, colour("yellow" if world.turn.moves_left else "white", dim=not world.turn.moves_left))
         write(win, top + 1, x + 2 + text_width(moves), action,
               colour("white" if world.turn.action_used else "yellow", dim=world.turn.action_used))
 
         for index, ability in enumerate(hero.abilities[:3]):
             affordable = hero.mp >= ability.mp_cost
-            label = f"[{index + 1}] {ability.name}"
+            label = f"[{index + 1}] {i18n.t(ability.name)}"
             write(win, top + 2 + index, x + 1, clip(label, width - 8),
                   colour("white", bold=affordable, dim=not affordable))
             cost = ability.cost_label()
@@ -452,10 +466,10 @@ def _draw_action_column(
                   colour("blue" if affordable else "white", dim=not affordable))
 
         if world.turn_spent:
-            write(win, top + 5, x + 1, clip("這回合沒事做了 — 按 e 換下一位", width - 2),
+            write(win, top + 5, x + 1, clip(i18n.t("這回合沒事做了 — 按 e 換下一位"), width - 2),
                   colour("yellow", bold=True))
         else:
-            write(win, top + 5, x + 1, clip("[i]道具 [Tab]換人 [e]結束", width - 2), colour("cyan"))
+            write(win, top + 5, x + 1, clip(i18n.t("[i]道具 [Tab]換人 [e]結束"), width - 2), colour("cyan"))
 
     _draw_dice(win, top + 6, x, width, world, hint, forecast, face)
 
@@ -501,19 +515,23 @@ def _draw_dice(
 
     if roll is None:
         if not hint:
-            write(win, top + 1, x + 1, "還沒擲過骰子", colour("white", dim=True))
+            write(win, top + 1, x + 1, i18n.t("還沒擲過骰子"), colour("white", dim=True))
         _draw_die(win, top + 3, x + 1, None, "white")
         return
 
-    title = f"{roll.actor} 的 {roll.ability}" + (f" → {roll.target}" if roll.target else "")
+    title = i18n.t(
+        "{name} 的 {ability}", name=i18n.t(roll.actor), ability=i18n.t(roll.ability)
+    )
+    if roll.target:
+        title += i18n.t(" → {target}", target=i18n.t(roll.target))
     write(win, top + 1, x + 1, clip(title, width - 2), colour(roll.actor_color, bold=True))
 
     if roll.needed is not None:
         write(win, top + 2, x + 1, clip(_odds_text(roll.needed, 20), width - 2), colour("cyan"))
     elif roll.damage is not None:
-        write(win, top + 2, x + 1, clip("自動命中，直接算傷害", width - 2), colour("cyan"))
+        write(win, top + 2, x + 1, clip(i18n.t("自動命中，直接算傷害"), width - 2), colour("cyan"))
     elif roll.healing is not None:
-        write(win, top + 2, x + 1, clip("治療", width - 2), colour("cyan"))
+        write(win, top + 2, x + 1, clip(i18n.t("治療"), width - 2), colour("cyan"))
 
     shown = face if face is not None else _die_value(roll)
     tone = "yellow" if face is not None else _die_colour(roll)
@@ -525,10 +543,10 @@ def _draw_dice(
 
 def _odds_text(hits_on: int | None, crits_on: int) -> str:
     if hits_on is None:
-        return "自動命中，不需擲骰"
+        return i18n.t("自動命中，不需擲骰")
     if hits_on > 20:
-        return f"只有 {crits_on} 才打得中"
-    return f"{hits_on} 以上命中 ‧ {crits_on} 爆擊"
+        return i18n.t("只有 {crits} 才打得中", crits=crits_on)
+    return i18n.t("{hits} 以上命中 ‧ {crits} 爆擊", hits=hits_on, crits=crits_on)
 
 
 def _die_value(roll) -> int | None:
@@ -569,9 +587,9 @@ def _draw_result(win, row: int, x: int, width: int, roll) -> None:
         write(win, row + 2, x, clip(roll.outcome, width), colour(_die_colour(roll), bold=True))
     if roll.damage is not None:
         write(win, row + (2 if roll.check is None else 1), x,
-              clip(f"傷害 {roll.damage.total}", width), colour("red", bold=True))
+              clip(i18n.t("傷害 {n}", n=roll.damage.total), width), colour("red", bold=True))
     if roll.healing is not None:
-        write(win, row + 2, x, clip(f"治療 {roll.healing.total}", width), colour("green", bold=True))
+        write(win, row + 2, x, clip(i18n.t("治療 {n}", n=roll.healing.total), width), colour("green", bold=True))
 
 
 # -- column 3: the log ------------------------------------------------------- #
@@ -658,14 +676,15 @@ def draw_item_menu(win, world: World) -> None:
     box_h = max(5, len(entries) + 4)
     box_w = min(56, width - 4)
     top, left = max(0, height // 2 - box_h - 2), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "道具")
+    draw_box(win, top, left, box_h, box_w, i18n.t("道具"))
 
     if not entries:
-        write(win, top + 2, left + 3, "背包是空的 — 去開幾個寶箱吧。", colour("white", dim=True))
+        write(win, top + 2, left + 3, i18n.t("背包是空的 — 去開幾個寶箱吧。"), colour("white", dim=True))
     for index, (item, count) in enumerate(entries, start=1):
-        write(win, top + 1 + index, left + 3, f"[{index}] {item.name} x{count}", colour("yellow", bold=True))
-        write(win, top + 1 + index, left + 22, clip(item.description, box_w - 25), colour("white"))
-    write(win, top + box_h - 2, left + 3, "數字鍵使用 ‧ Esc 取消", colour("white", dim=True))
+        label = clip(f"[{index}] {i18n.t(item.name)} x{count}", 22)
+        write(win, top + 1 + index, left + 3, label, colour("yellow", bold=True))
+        write(win, top + 1 + index, left + 25, clip(i18n.t(item.description), box_w - 28), colour("white"))
+    write(win, top + box_h - 2, left + 3, i18n.t("數字鍵使用 ‧ Esc 取消"), colour("white", dim=True))
 
 
 def draw_handoff(win, world: World, hero: Entity, previous: int | None) -> None:
@@ -674,11 +693,13 @@ def draw_handoff(win, world: World, hero: Entity, previous: int | None) -> None:
     box_w = min(52, width - 4)
     box_h = 9
     top, left = max(0, height // 2 - box_h), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "換人")
+    draw_box(win, top, left, box_h, box_w, i18n.t("換人"))
 
     seat = world.seat_label(hero.owner)
-    centre_in_box(win, top + 2, left, box_w, f"輪到 {seat}", colour("cyan", bold=True))
-    centre_in_box(win, top + 3, left, box_w, f"{hero.glyph} {hero.name}", colour(hero.color, bold=True))
+    centre_in_box(win, top + 2, left, box_w, i18n.t("輪到 {seat}", seat=seat), colour("cyan", bold=True))
+    centre_in_box(
+        win, top + 3, left, box_w, f"{hero.glyph} {i18n.t(hero.name)}", colour(hero.color, bold=True)
+    )
     centre_in_box(
         win,
         top + 4,
@@ -690,19 +711,24 @@ def draw_handoff(win, world: World, hero: Entity, previous: int | None) -> None:
 
     if previous is not None:
         centre_in_box(
-            win, top + 6, left, box_w, f"（{world.seat_label(previous)} 的回合結束）", colour("white", dim=True)
+            win,
+            top + 6,
+            left,
+            box_w,
+            i18n.t("（{seat} 的回合結束）", seat=world.seat_label(previous)),
+            colour("white", dim=True),
         )
-    centre_in_box(win, top + 7, left, box_w, "準備好就按任意鍵", colour("yellow", bold=True))
+    centre_in_box(win, top + 7, left, box_w, i18n.t("準備好就按任意鍵"), colour("yellow", bold=True))
 
 
 def _gear_tags(gear) -> str:
     parts = []
     if gear.bonus_hit:
-        parts.append(f"命中+{gear.bonus_hit}")
+        parts.append(i18n.t("命中+{n}", n=gear.bonus_hit))
     if gear.bonus_damage:
-        parts.append(f"傷害+{gear.bonus_damage}")
+        parts.append(i18n.t("傷害+{n}", n=gear.bonus_damage))
     if gear.bonus_ac:
-        parts.append(f"護甲+{gear.bonus_ac}")
+        parts.append(i18n.t("護甲+{n}", n=gear.bonus_ac))
     return " ".join(parts)
 
 
@@ -715,16 +741,16 @@ def draw_shop(win, world: World, offers: list, cursor: int, pending_gear=None) -
     box_w = min(60, width - 4)
     box_h = min(height - 2, len(offers) + 6)
     top, left = max(0, (height - box_h) // 2), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "商人")
+    draw_box(win, top, left, box_h, box_w, i18n.t("商人"))
 
     write(
         win,
         top + 1,
         left + 3,
-        f"第 {world.depth} 層樓梯口 ‧ 下一層之前補給一下",
+        clip(i18n.t("第 {depth} 層樓梯口 ‧ 下一層之前補給一下", depth=world.depth), box_w - 19),
         colour("white", dim=True),
     )
-    write(win, top + 1, left + box_w - 16, f"金幣 {world.gold}", colour("yellow", bold=True))
+    write(win, top + 1, left + box_w - 16, i18n.t("金幣 {n}", n=world.gold), colour("yellow", bold=True))
 
     for index, (kind, obj, price) in enumerate(offers):
         row = top + 3 + index
@@ -735,23 +761,25 @@ def draw_shop(win, world: World, offers: list, cursor: int, pending_gear=None) -
         afford = world.gold >= price
         if kind == "consumable":
             owned = world.inventory.get(obj.id, 0)
-            name = f"{obj.name}" + (f"（有 {owned}）" if owned else "")
-            detail = obj.description
+            name = i18n.t(obj.name) + (i18n.t("（有 {n}）", n=owned) if owned else "")
+            detail = i18n.t(obj.description)
         else:
-            name = obj.name
+            name = i18n.t(obj.name)
             detail = _gear_tags(obj)
         base = colour("yellow" if afford else "white", bold=selected, dim=not afford)
         write(win, row, left + 3, f"{marker} {name}", base)
         write(win, row, left + 26, clip(detail, box_w - 38), colour("white", dim=not afford))
-        write(win, row, left + box_w - 9, f"{price:>4} 金", colour("yellow", dim=not afford))
+        write(win, row, left + box_w - 9, i18n.t("{price:>4} 金", price=price), colour("yellow", dim=not afford))
 
     footer = top + box_h - 2
     if pending_gear is not None:
-        picks = "  ".join(f"{i + 1} {h.name}" for i, h in enumerate(world.living(Team.PARTY)))
-        text = clip(f"裝備給誰？ {picks} ‧ Esc", box_w - 6)
+        picks = "  ".join(
+            f"{i + 1} {i18n.t(h.name)}" for i, h in enumerate(world.living(Team.PARTY))
+        )
+        text = clip(i18n.t("裝備給誰？ {picks} ‧ Esc", picks=picks), box_w - 6)
         write(win, footer, left + 3, text, colour("cyan", bold=True))
     else:
-        text = clip("↑↓ 選擇 ‧ Enter/數字 購買 ‧ e/> 下樓 ‧ Esc 離開", box_w - 6)
+        text = clip(i18n.t("↑↓ 選擇 ‧ Enter/數字 購買 ‧ e/> 下樓 ‧ Esc 離開"), box_w - 6)
         write(win, footer, left + 3, text, colour("white", dim=True))
 
 
@@ -766,39 +794,51 @@ def draw_monsters(win, world: World) -> None:
     """A roll-call of what is on screen: health, armour, distance, state."""
     height, width = win.getmaxyx()
     monsters = visible_monsters(world)
-    box_w = min(64, width - 4)
+    box_w = min(72, width - 4)
     box_h = min(height - 2, max(7, len(monsters) + 5))
     top, left = max(0, (height - box_h) // 2), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "怪物")
+    draw_box(win, top, left, box_h, box_w, i18n.t("怪物"))
 
     if not monsters:
-        write(win, top + 2, left + 3, "視線內沒有怪物。", colour("white", dim=True))
+        write(win, top + 2, left + 3, i18n.t("視線內沒有怪物。"), colour("white", dim=True))
     else:
-        write(win, top + 1, left + 3, "名稱", colour("white", dim=True))
-        write(win, top + 1, left + 20, "生命", colour("white", dim=True))
-        write(win, top + 1, left + 38, "護甲", colour("white", dim=True))
-        write(win, top + 1, left + 45, "距離", colour("white", dim=True))
-        write(win, top + 1, left + 52, "狀態", colour("white", dim=True))
+        write(win, top + 1, left + 3, i18n.t("名稱"), colour("white", dim=True))
+        write(win, top + 1, left + 24, i18n.t("生命"), colour("white", dim=True))
+        write(win, top + 1, left + 44, i18n.t("護甲"), colour("white", dim=True))
+        write(win, top + 1, left + 50, i18n.t("距離"), colour("white", dim=True))
+        write(win, top + 1, left + 56, i18n.t("狀態"), colour("white", dim=True))
 
     focus = world.current or world.party[0]
     for index, monster in enumerate(monsters):
         row = top + 2 + index
         if row >= top + box_h - 2:
-            write(win, row, left + 3, f"…另外還有 {len(monsters) - index} 隻", colour("white", dim=True))
+            write(
+                win,
+                row,
+                left + 3,
+                i18n.t("…另外還有 {n} 隻", n=len(monsters) - index),
+                colour("white", dim=True),
+            )
             break
         tone = hp_colour(monster)
-        write(win, row, left + 3, clip(f"{monster.glyph} {monster.name}", 16), colour(monster.color, bold=True))
-        write(win, row, left + 20, f"{monster.hp}/{monster.max_hp}", colour(tone))
-        write(win, row, left + 28, bar(monster.hp, monster.max_hp, 8), colour(tone))
-        write(win, row, left + 38, str(monster.effective_ac), colour("white"))
-        write(win, row, left + 45, f"{distance(focus.position, monster.position)} 格", colour("cyan"))
+        write(win, row, left + 3, clip(f"{monster.glyph} {i18n.t(monster.name)}", 20), colour(monster.color, bold=True))
+        write(win, row, left + 24, f"{monster.hp}/{monster.max_hp}", colour(tone))
+        write(win, row, left + 32, bar(monster.hp, monster.max_hp, 8), colour(tone))
+        write(win, row, left + 44, str(monster.effective_ac), colour("white"))
+        write(
+            win,
+            row,
+            left + 50,
+            clip(i18n.t("{n} 格", n=distance(focus.position, monster.position)), 5),
+            colour("cyan"),
+        )
         status = monster.status_summary()
-        state = status or ("警戒" if monster.awake else "睡著")
-        write(win, row, left + 52, clip(state, box_w - 55),
+        state = status or (i18n.t("警戒") if monster.awake else i18n.t("睡著"))
+        write(win, row, left + 56, clip(state, box_w - 59),
               colour("magenta" if status else ("yellow" if monster.awake else "white"),
                      dim=not status and not monster.awake))
 
-    write(win, top + box_h - 2, left + 3, "按任意鍵返回", colour("white", dim=True))
+    write(win, top + box_h - 2, left + 3, i18n.t("按任意鍵返回"), colour("white", dim=True))
 
 
 def legend_rows(world: World) -> list[tuple[str, str, str]]:
@@ -810,20 +850,20 @@ def legend_rows(world: World) -> list[tuple[str, str, str]]:
     map, it does not leak the bestiary.
     """
     rows = [
-        ("#", "white", "牆壁 — 擋路，也擋住視線"),
-        (".", "white", "地板 — 走得過去"),
-        (">", "cyan", "往下一層的樓梯（站上去按 > 找商人）"),
-        ("$", "yellow", "寶箱 — 走上去自動開啟"),
+        ("#", "white", i18n.t("牆壁 — 擋路，也擋住視線")),
+        (".", "white", i18n.t("地板 — 走得過去")),
+        (">", "cyan", i18n.t("往下一層的樓梯（站上去按 > 找商人）")),
+        ("$", "yellow", i18n.t("寶箱 — 走上去自動開啟")),
     ]
     for hero in world.party:
-        state = "" if hero.is_alive else "（已陣亡）"
-        rows.append((hero.glyph, hero.color, f"{hero.name}{state}"))
+        state = "" if hero.is_alive else i18n.t("（已陣亡）")
+        rows.append((hero.glyph, hero.color, f"{i18n.t(hero.name)}{state}"))
     seen: dict[str, tuple[str, str]] = {}
     for monster in world.living(Team.MONSTER):
         if world.can_see(monster) and monster.glyph not in seen:
             seen[monster.glyph] = (monster.color, monster.name)
     for glyph, (tone, name) in seen.items():
-        rows.append((glyph, tone, f"{name} — 敵人"))
+        rows.append((glyph, tone, i18n.t("{name} — 敵人", name=i18n.t(name))))
     return rows
 
 
@@ -832,15 +872,15 @@ def draw_legend(win, world: World) -> None:
     height, width = win.getmaxyx()
     rows = legend_rows(world)
     notes = [
-        "反白黃底 = 游標所在的格子",
-        "反白紅底 = 範圍技能會波及的格子",
-        "反白單位 = 現在輪到它行動",
-        "暗色      = 走過但目前看不到的地方",
+        i18n.t("反白黃底 = 游標所在的格子"),
+        i18n.t("反白紅底 = 範圍技能會波及的格子"),
+        i18n.t("反白單位 = 現在輪到它行動"),
+        i18n.t("暗色      = 走過但目前看不到的地方"),
     ]
     box_w = min(60, width - 4)
     box_h = min(height - 2, len(rows) + len(notes) + 4)
     top, left = max(0, (height - box_h) // 2), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "圖例")
+    draw_box(win, top, left, box_h, box_w, i18n.t("圖例"))
 
     row = top + 1
     limit = top + box_h - 2
@@ -857,7 +897,7 @@ def draw_legend(win, world: World) -> None:
             break
         write(win, row, left + 4, clip(note, box_w - 8), colour("white", dim=True))
         row += 1
-    write(win, top + box_h - 2, left + 3, "按任意鍵返回", colour("white", dim=True))
+    write(win, top + box_h - 2, left + 3, i18n.t("按任意鍵返回"), colour("white", dim=True))
 
 
 def centre_in_box(win, row: int, left: int, box_w: int, text: str, attr: int = 0) -> None:
@@ -866,31 +906,31 @@ def centre_in_box(win, row: int, left: int, box_w: int, text: str, attr: int = 0
 
 def draw_help(win) -> None:
     lines = [
-        "移動        ← ↑ ↓ → 或 WASD（剩餘移動點數見中間欄）",
-        "主要行動    1-3 使用技能，i 使用道具（每回合限一次）",
-        "選擇目標    ← ↑ ↓ → 移動游標，Tab 切換目標，Enter 確認，Esc 取消",
-        "換人        Tab（尚未行動時可讓下一位隊友先動）",
-        "多人模式    輪到別人時會跳出交接畫面，按任意鍵接手；左欄 P1-P4 是各角色的主人",
-        "結束回合    e 或空白鍵 — 回合不會自己結束，移動與行動可以任意順序使用",
-        "下樓        > （需站在樓梯上，先開商人補給，再擲一次下樓）",
-        "查看怪物    m — 列出視線內每隻怪物的生命、護甲、距離與狀態",
-        "圖例        g — 地圖上每個符號與反白顏色的意思",
-        "說明        h（或 ?）— 就是這一頁，隨時可以按",
-        "其他        q 離開這一局",
+        i18n.t("移動        ← ↑ ↓ → 或 WASD（剩餘移動點數見中間欄）"),
+        i18n.t("主要行動    1-3 使用技能，i 使用道具（每回合限一次）"),
+        i18n.t("選擇目標    ← ↑ ↓ → 移動游標，Tab 切換目標，Enter 確認，Esc 取消"),
+        i18n.t("換人        Tab（尚未行動時可讓下一位隊友先動）"),
+        i18n.t("多人模式    輪到別人時會跳出交接畫面，按任意鍵接手；左欄 P1-P4 是各角色的主人"),
+        i18n.t("結束回合    e 或空白鍵 — 回合不會自己結束，移動與行動可以任意順序使用"),
+        i18n.t("下樓        > （需站在樓梯上，先開商人補給，再擲一次下樓）"),
+        i18n.t("查看怪物    m — 列出視線內每隻怪物的生命、護甲、距離與狀態"),
+        i18n.t("圖例        g — 地圖上每個符號與反白顏色的意思"),
+        i18n.t("說明        h（或 ?）— 就是這一頁，隨時可以按"),
+        i18n.t("其他        q 離開這一局"),
         "",
-        "行動順序    最上面一列由左至右就是接下來的出手順序，▶ 是現在輪到的",
-        "            看不到的怪物只顯示 ? — 順序是真的，位置不會洩漏",
-        "骰子        中間欄會先告訴你「幾點以上命中、幾點爆擊」，再擲給你看",
-        "            20 必中且傷害骰翻倍，1 必失手",
+        i18n.t("行動順序    最上面一列由左至右就是接下來的出手順序，▶ 是現在輪到的"),
+        i18n.t("            看不到的怪物只顯示 ? — 順序是真的，位置不會洩漏"),
+        i18n.t("骰子        中間欄會先告訴你「幾點以上命中、幾點爆擊」，再擲給你看"),
+        i18n.t("            20 必中且傷害骰翻倍，1 必失手"),
     ]
     height, width = win.getmaxyx()
     box_w = min(74, width - 2)
     box_h = len(lines) + 4
     top, left = max(0, (height - box_h) // 2), max(0, (width - box_w) // 2)
-    draw_box(win, top, left, box_h, box_w, "操作說明")
+    draw_box(win, top, left, box_h, box_w, i18n.t("操作說明"))
     for index, text in enumerate(lines):
         write(win, top + 2 + index, left + 3, clip(text, box_w - 6), colour("white"))
-    write(win, top + box_h - 2, left + 3, "按任意鍵返回", colour("white", dim=True))
+    write(win, top + box_h - 2, left + 3, i18n.t("按任意鍵返回"), colour("white", dim=True))
 
 
 def splash_tiles(world: World, ability: Ability, centre_spot: tuple[int, int]) -> set[tuple[int, int]]:
