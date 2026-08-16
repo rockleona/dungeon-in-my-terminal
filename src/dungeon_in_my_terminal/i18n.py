@@ -9,13 +9,56 @@ whichever language is currently selected.
 
 No curses import here — this module is used by both ``core/`` and ``ui/``,
 and ``core/`` must stay importable headlessly.
+
+Translation tables live in ``locales/*.toml`` (one file per language, the
+filename stem is the language code) rather than in Python, so adding or
+editing a string never requires touching Python syntax — see that
+directory's ``en.toml`` for the key/table conventions.
 """
 
 from __future__ import annotations
 
+import tomllib
 import warnings
+from pathlib import Path
 
-from .i18n_strings import TRANSLATIONS
+_LOCALES_DIR = Path(__file__).parent / "locales"
+
+
+def _flatten(table: dict[str, object]) -> dict[str, str]:
+    """Turn a parsed TOML table into the flat ``key -> translation`` map
+    ``t()`` looks up. Nesting (e.g. ``[core.dice]``) is purely organisational
+    and dropped; a ``[_ctx.<name>]`` table is the one exception — its entries
+    are folded into ``f"{name}\\x1f{key}"``, matching the key ``t()`` builds
+    when called with ``_ctx=<name>``.
+    """
+    flat: dict[str, str] = {}
+    for key, value in table.items():
+        if key == "_ctx":
+            flat.update(
+                {
+                    f"{ctx_name}\x1f{ctx_key}": ctx_value
+                    for ctx_name, entries in value.items()
+                    for ctx_key, ctx_value in entries.items()
+                }
+            )
+        elif isinstance(value, dict):
+            flat.update(_flatten(value))
+        else:
+            flat[key] = value
+    return flat
+
+
+def _load_translations() -> dict[str, dict[str, str]]:
+    translations: dict[str, dict[str, str]] = {}
+    for path in sorted(_LOCALES_DIR.glob("*.toml")):
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+        translations[path.stem] = _flatten(data)
+    return translations
+
+
+TRANSLATIONS = _load_translations()
 
 _language = "zh"
 _warned: set[str] = set()

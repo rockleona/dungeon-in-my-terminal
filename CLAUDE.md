@@ -25,7 +25,8 @@ entry point or the package name ever changes, they need changing there too.
 src/dungeon_in_my_terminal/
 ├── cli.py         entry point and flags
 ├── i18n.py        language selection and the t() translation function
-├── i18n_strings.py   the English translation table (data only)
+├── locales/       one *.toml per language (filename stem = language code)
+│   └── en.toml       the English translation table (data only)
 ├── core/          rules — never imports curses
 │   ├── dice.py       d20 checks, "2d6+3" parsing; every random result comes from here
 │   ├── dungeon.py    BSP generation, line of sight, BFS pathing, grid helpers
@@ -123,13 +124,23 @@ data (`classes.py`, `monsters.py`, `items.py`, `shop.py`, `entity.py`'s
 `i18n.t()`.
 
 The Chinese literal is its own translation key (gettext-msgid style, no
-invented key names): `i18n.t("戰士")` looks up `"戰士"` in
-`i18n_strings.EN`. A missing key falls back to the Chinese source with a
-one-time `warnings.warn` rather than crashing. When the same Chinese string
-needs two unrelated English translations depending on context (the Bless
-*ability* vs. the Blessed *status label*, both written as `祝福`), pass
+invented key names): `i18n.t("戰士")` looks up `"戰士"` in `locales/en.toml`.
+A missing key falls back to the Chinese source with a one-time
+`warnings.warn` rather than crashing. When the same Chinese string needs two
+unrelated English translations depending on context (the Bless *ability* vs.
+the Blessed *status label*, both written as `祝福`), pass
 `i18n.t(text, _ctx="status")` — the context is folded into the lookup key,
 never into the rendered text.
+
+Translations live in `locales/*.toml`, not Python, so adding or editing a
+string is just editing data — see `locales/en.toml`'s header for the exact
+format. Each file is one table per source module (`[core.dice]`,
+`[ui.render]`, …) purely for readability; the nesting itself carries no
+meaning and `i18n._flatten` drops it when loading. The one exception is
+`[_ctx.<name>]`, reserved for entries reached via `_ctx=<name>` (e.g.
+`[_ctx.status]` for the Blessed/Stun/etc. status labels) — a real template
+key never starts with `_ctx`, so it can't collide. Adding a new language is
+just adding `locales/<code>.toml`; nothing in `i18n.py` needs to change.
 
 Registries keep their Chinese literals untouched; translation happens only
 at *display* call sites in `render.py`/`app.py` (`i18n.t(hero.name)`,
@@ -139,7 +150,7 @@ importing (`classes.py`, `monsters.py`, …) — that runs before the CLI has
 called `i18n.set_language()`, so the result would be frozen in whatever
 language happened to be active at import time.
 
-New strings need a matching `i18n_strings.EN` entry — `tests/test_i18n.py`
+New strings need a matching entry in `locales/en.toml` — `tests/test_i18n.py`
 enforces this two ways: an AST walk catches every literal template passed to
 `i18n.t()`, and an explicit list mirrors which registry fields the UI
 actually reads (a field the UI never displays, e.g. `Ability.description` on
@@ -231,10 +242,9 @@ levelled fastest put the dumb agent at floor 10 in half its runs.
 
 - No tutorial floor yet — planned last, after the rest of the roster/depth
   work.
-- Only `zh` (default) and `en` exist; `i18n.py`'s design (`TRANSLATIONS: dict[str,
-  dict[str, str]]`) supports more, but nothing beyond the English table has
-  been authored. There is also no in-game language switch — `--lang` is
-  read once at startup.
+- Only `zh` (default) and `en` exist; `locales/*.toml` supports more just by
+  adding a file, but nothing beyond `en.toml` has been authored. There is
+  also no in-game language switch — `--lang` is read once at startup.
 - Gear only comes from the merchant; chests still drop consumables, not
   equipment. Fine for now, but a deeper loot table is the obvious next step.
 - **The repo has no remote yet.** The README's install commands point at

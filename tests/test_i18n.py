@@ -17,9 +17,9 @@ import pytest
 from dungeon_in_my_terminal import i18n
 from dungeon_in_my_terminal.core import classes, items, monsters, shop
 from dungeon_in_my_terminal.core.entity import STAT_NAMES
-from dungeon_in_my_terminal.i18n_strings import EN
 
 SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "dungeon_in_my_terminal"
+EN = i18n.TRANSLATIONS["en"]
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +60,7 @@ def _literal_t_calls() -> set[str]:
     literal, keyed the same way ``i18n.t`` itself builds lookup keys."""
     keys: set[str] = set()
     for path in SRC.rglob("*.py"):
-        if path.name in ("i18n.py", "i18n_strings.py"):
+        if path.name == "i18n.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
