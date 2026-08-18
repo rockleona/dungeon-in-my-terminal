@@ -12,7 +12,7 @@ from ..core.abilities import Ability, TargetKind
 from ..core.dungeon import MAX_DEPTH, distance
 from ..core.entity import Entity, Team
 from ..core.game import GameMode, Message, Phase, World
-from . import render
+from . import render, sound
 from .render import colour, centre, write
 
 MOVE_KEYS: dict[int, tuple[int, int]] = {
@@ -59,6 +59,7 @@ class App:
         curses.set_escdelay(25)  # otherwise Esc takes a full second to register
         screen.keypad(True)
         render.setup_colors()
+        sound.init()
 
     # -- top level --------------------------------------------------------- #
 
@@ -648,6 +649,8 @@ class App:
             return
 
         if message.kind in ("damage", "heal", "death"):
+            if message.kind == "damage":
+                sound.play_hit()
             self.draw()
             curses.napms(ENEMY_TURN_DELAY_MS if world.hero is None else HIT_DELAY_MS)
         elif message.kind == "warn" and world.hero is None:
