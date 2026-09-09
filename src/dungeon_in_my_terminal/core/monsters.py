@@ -1,18 +1,25 @@
-"""Monster roster, split into three tiers that unlock as you descend.
+"""Monster roster, loaded from ``data/monsters.toml``.
 
 Each monster carries the same ``Ability`` objects the heroes use, so combat
-resolves both sides through one code path. What makes a monster feel different
-is its ``AI`` behaviour plus which abilities it brings.
+resolves both sides through one code path. What makes a monster feel
+different is its ``AI`` behaviour plus which abilities it brings — both are
+data, so the whole bestiary lives in TOML. Call ``reload()`` to point the
+registry at a different file (``cli.py``'s ``--content-dir`` does this
+before the game starts).
 """
 
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
-from .abilities import Ability, AbilityKind, TargetKind
-from .entity import Entity, Stats, Status, Team
+from . import content
+from .abilities import Ability
+from .entity import Entity, Stats, Team
+
+DEFAULT_FILE = Path(__file__).resolve().parent.parent / "data" / "monsters.toml"
 
 
 class AI(str, Enum):
@@ -31,11 +38,14 @@ class MonsterDef:
     speed: int
     ai: AI
     stats: Stats
-    abilities: list[Ability]
+    abilities: list[Ability] = field(default_factory=list)
     color: str = "white"
     min_depth: int = 1
     max_depth: int = 99
     is_boss: bool = False
+    boss_floor: int | None = None
+    """Which floor spawns this instead of the regular per-room roll. Only
+    meaningful when ``is_boss`` is set."""
     sight: int = 8
     score: int = 10
 
@@ -59,249 +69,94 @@ class MonsterDef:
         return monster
 
 
-def _strike(name: str, damage: str, reach: int = 1, stat: str = "strength", **kwargs) -> Ability:
-    return Ability(
-        id=name,
-        name=name,
-        description=f"{damage} 傷害",
-        kind=AbilityKind.ATTACK,
-        target=TargetKind.ENEMY,
-        stat=stat,
-        reach=reach,
-        damage=damage,
-        **kwargs,
-    )
+def _build(monster_id: str, raw: dict) -> MonsterDef:
+    ctx = f"monster {monster_id!r}"
+    is_boss = raw.get("is_boss", False)
+    boss_floor = raw.get("boss_floor")
+    if is_boss and boss_floor is None:
+        raise content.ContentError(f"{ctx}: is_boss = true requires boss_floor")
+    ai_raw = content.require(raw, "ai", ctx)
+    try:
+        ai = AI(ai_raw)
+    except ValueError:
+        valid = ", ".join(repr(m.value) for m in AI)
+        raise content.ContentError(
+            f"{ctx}: ai = {ai_raw!r} is not valid; choose one of {valid}"
+        ) from None
+    try:
+        return MonsterDef(
+            id=monster_id,
+            name=content.require(raw, "name", ctx),
+            glyph=content.require(raw, "glyph", ctx),
+            max_hp=content.require(raw, "max_hp", ctx),
+            armor_class=content.require(raw, "armor_class", ctx),
+            speed=content.require(raw, "speed", ctx),
+            ai=ai,
+            stats=content.build_stats(raw.get("stats", {}), ctx),
+            abilities=[content.build_ability(a, ctx) for a in raw.get("abilities", [])],
+            color=raw.get("color", "white"),
+            min_depth=raw.get("min_depth", 1),
+            max_depth=raw.get("max_depth", 99),
+            is_boss=is_boss,
+            boss_floor=boss_floor,
+            sight=raw.get("sight", 8),
+            score=raw.get("score", 10),
+        )
+    except TypeError as exc:
+        raise content.ContentError(f"{ctx}: {exc}") from exc
 
 
-# --------------------------------------------------------------------------- #
-# Tier 1 — floors 1-3
-# --------------------------------------------------------------------------- #
+def load(path: Path = DEFAULT_FILE) -> list[MonsterDef]:
+    data = content.load_toml(path)
+    return [_build(monster_id, raw) for monster_id, raw in data.items()]
 
-SLIME = MonsterDef(
-    id="slime",
-    name="史萊姆",
-    glyph="s",
-    max_hp=9,
-    armor_class=11,
-    speed=3,
-    ai=AI.MELEE,
-    stats=Stats(strength=12, dexterity=8, intellect=4, wisdom=8),
-    abilities=[_strike("酸液拍擊", "1d4")],
-    color="green",
-    max_depth=4,
-    score=8,
-)
 
-RAT = MonsterDef(
-    id="rat",
-    name="巨鼠",
-    glyph="r",
-    max_hp=6,
-    armor_class=13,
-    speed=5,
-    ai=AI.MELEE,
-    stats=Stats(strength=10, dexterity=14, intellect=4, wisdom=10),
-    abilities=[_strike("啃咬", "1d4", stat="dexterity")],
-    color="yellow",
-    max_depth=4,
-    score=6,
-)
+def reload(content_dir: Path | str | None = None) -> None:
+    """Rebuild the registry, optionally from a ``monsters.toml`` in
+    ``content_dir``. Falls back to the built-in file if that override
+    doesn't exist, so a content dir only needs to carry the files it means
+    to change."""
+    global ALL, ROSTER, BY_ID, BOSSES
+    global SLIME, RAT, GOBLIN_SCOUT, GOBLIN_WARRIOR, SKELETON_ARCHER, GOBLIN_SHAMAN
+    global HELLHOUND, OGRE, SHADOW_MAGE, GOBLIN_KING, ABYSS_LORD
+    path = DEFAULT_FILE
+    if content_dir is not None:
+        override = Path(content_dir) / "monsters.toml"
+        if override.exists():
+            path = override
+    ALL = load(path)
+    BY_ID = {monster.id: monster for monster in ALL}
+    ROSTER = [monster for monster in ALL if not monster.is_boss]
+    BOSSES = {monster.boss_floor: monster for monster in ALL if monster.is_boss}
+    SLIME = BY_ID.get("slime")
+    RAT = BY_ID.get("rat")
+    GOBLIN_SCOUT = BY_ID.get("goblin_scout")
+    GOBLIN_WARRIOR = BY_ID.get("goblin_warrior")
+    SKELETON_ARCHER = BY_ID.get("skeleton_archer")
+    GOBLIN_SHAMAN = BY_ID.get("goblin_shaman")
+    HELLHOUND = BY_ID.get("hellhound")
+    OGRE = BY_ID.get("ogre")
+    SHADOW_MAGE = BY_ID.get("shadow_mage")
+    GOBLIN_KING = BY_ID.get("goblin_king")
+    ABYSS_LORD = BY_ID.get("abyss_lord")
 
-GOBLIN_SCOUT = MonsterDef(
-    id="goblin_scout",
-    name="哥布林斥候",
-    glyph="g",
-    max_hp=9,
-    armor_class=12,
-    speed=5,
-    ai=AI.MELEE,
-    stats=Stats(strength=11, dexterity=14, intellect=9, wisdom=9),
-    abilities=[_strike("短刀", "1d6", stat="dexterity")],
-    color="green",
-    min_depth=2,
-    max_depth=6,
-    score=10,
-)
 
-# --------------------------------------------------------------------------- #
-# Tier 2 — floors 4-7
-# --------------------------------------------------------------------------- #
-
-GOBLIN_WARRIOR = MonsterDef(
-    id="goblin_warrior",
-    name="哥布林戰士",
-    glyph="G",
-    max_hp=15,
-    armor_class=14,
-    speed=4,
-    ai=AI.MELEE,
-    stats=Stats(strength=14, dexterity=12, intellect=9, wisdom=10),
-    abilities=[_strike("彎刀", "1d6+1")],
-    color="red",
-    min_depth=4,
-    max_depth=9,
-    score=16,
-)
-
-SKELETON_ARCHER = MonsterDef(
-    id="skeleton_archer",
-    name="骷髏弓手",
-    glyph="a",
-    max_hp=11,
-    armor_class=12,
-    speed=3,
-    ai=AI.RANGED,
-    stats=Stats(strength=10, dexterity=15, intellect=6, wisdom=10),
-    abilities=[_strike("骨箭", "1d6", reach=5, stat="dexterity")],
-    color="cyan",
-    min_depth=4,
-    max_depth=9,
-    score=18,
-)
-
-GOBLIN_SHAMAN = MonsterDef(
-    id="goblin_shaman",
-    name="哥布林薩滿",
-    glyph="S",
-    max_hp=12,
-    armor_class=12,
-    speed=3,
-    ai=AI.SUPPORT,
-    stats=Stats(strength=9, dexterity=11, intellect=12, wisdom=15),
-    abilities=[
-        Ability(
-            id="mend",
-            name="縫合術",
-            description="治療一名受傷的同伴",
-            kind=AbilityKind.HEAL,
-            target=TargetKind.ALLY,
-            stat="wisdom",
-            reach=4,
-            healing="1d6+2",
-        ),
-        _strike("詛咒飛彈", "1d4", reach=4, stat="wisdom"),
-    ],
-    color="magenta",
-    min_depth=4,
-    max_depth=10,
-    score=20,
-)
-
-# --------------------------------------------------------------------------- #
-# Tier 3 — floors 8-10
-# --------------------------------------------------------------------------- #
-
-HELLHOUND = MonsterDef(
-    id="hellhound",
-    name="地獄犬",
-    glyph="h",
-    max_hp=17,
-    armor_class=14,
-    speed=6,
-    ai=AI.MELEE,
-    stats=Stats(strength=15, dexterity=15, intellect=5, wisdom=11),
-    abilities=[_strike("灼熱撕咬", "1d8")],
-    color="red",
-    min_depth=7,
-    score=24,
-)
-
-OGRE = MonsterDef(
-    id="ogre",
-    name="食人魔",
-    glyph="O",
-    max_hp=32,
-    armor_class=14,
-    speed=3,
-    ai=AI.MELEE,
-    stats=Stats(strength=18, dexterity=8, intellect=5, wisdom=9),
-    abilities=[_strike("巨棒橫掃", "2d6")],
-    color="yellow",
-    min_depth=8,
-    score=35,
-)
-
-SHADOW_MAGE = MonsterDef(
-    id="shadow_mage",
-    name="暗影法師",
-    glyph="m",
-    max_hp=18,
-    armor_class=13,
-    speed=3,
-    ai=AI.RANGED,
-    stats=Stats(strength=8, dexterity=12, intellect=17, wisdom=13),
-    abilities=[_strike("暗影箭", "1d8", reach=6, stat="intellect")],
-    color="magenta",
-    min_depth=8,
-    score=30,
-)
-
-# --------------------------------------------------------------------------- #
-# Bosses
-# --------------------------------------------------------------------------- #
-
-GOBLIN_KING = MonsterDef(
-    id="goblin_king",
-    name="哥布林王 葛拉許",
-    glyph="K",
-    max_hp=68,
-    armor_class=15,
-    speed=4,
-    ai=AI.MELEE,
-    stats=Stats(strength=17, dexterity=12, intellect=11, wisdom=12),
-    abilities=[
-        _strike("戰斧劈砍", "2d6+2"),
-        _strike("盾牌猛撞", "1d8", status=Status.STUNNED, status_rounds=1),
-    ],
-    color="red",
-    min_depth=5,
-    is_boss=True,
-    sight=99,
-    score=200,
-)
-
-ABYSS_LORD = MonsterDef(
-    id="abyss_lord",
-    name="深淵領主",
-    glyph="D",
-    max_hp=115,
-    armor_class=17,
-    speed=4,
-    ai=AI.MELEE,
-    stats=Stats(strength=19, dexterity=14, intellect=18, wisdom=16),
-    abilities=[
-        _strike("虛空之爪", "2d8"),
-        Ability(
-            id="shadow_burst",
-            name="暗影爆發",
-            description="半徑 2 的暗影爆炸",
-            kind=AbilityKind.BURST,
-            target=TargetKind.TILE,
-            stat="intellect",
-            reach=6,
-            damage="2d6",
-            radius=2,
-        ),
-    ],
-    color="magenta",
-    min_depth=10,
-    is_boss=True,
-    sight=99,
-    score=500,
-)
-
-ROSTER: list[MonsterDef] = [
-    SLIME,
-    RAT,
-    GOBLIN_SCOUT,
-    GOBLIN_WARRIOR,
-    SKELETON_ARCHER,
-    GOBLIN_SHAMAN,
-    HELLHOUND,
-    OGRE,
-    SHADOW_MAGE,
-]
-BOSSES: dict[int, MonsterDef] = {5: GOBLIN_KING, 10: ABYSS_LORD}
+ALL: list[MonsterDef]
+ROSTER: list[MonsterDef]
+BY_ID: dict[str, MonsterDef]
+BOSSES: dict[int, MonsterDef]
+SLIME: MonsterDef | None
+RAT: MonsterDef | None
+GOBLIN_SCOUT: MonsterDef | None
+GOBLIN_WARRIOR: MonsterDef | None
+SKELETON_ARCHER: MonsterDef | None
+GOBLIN_SHAMAN: MonsterDef | None
+HELLHOUND: MonsterDef | None
+OGRE: MonsterDef | None
+SHADOW_MAGE: MonsterDef | None
+GOBLIN_KING: MonsterDef | None
+ABYSS_LORD: MonsterDef | None
+reload()
 
 
 def available(depth: int) -> list[MonsterDef]:
