@@ -23,6 +23,13 @@ def main(argv: list[str] | None = None) -> int:
         default="zh",
         help="介面語言，預設繁體中文，加 en 切換英文",
     )
+    parser.add_argument(
+        "--content-dir",
+        type=str,
+        default=None,
+        help="自訂職業/怪物內容的資料夾，可放 classes.toml 和/或 monsters.toml"
+        "（缺的檔案沿用內建版本）",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -32,9 +39,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from . import i18n
+    from .core import classes, content, monsters
     from .ui.app import launch
 
     i18n.set_language(args.lang)
+    try:
+        classes.reload(args.content_dir)
+        monsters.reload(args.content_dir)
+    except content.ContentError as exc:
+        print(f"自訂內容讀取失敗：{exc}", file=sys.stderr)
+        return 1
     launch(seed=args.seed)
     return 0
 
