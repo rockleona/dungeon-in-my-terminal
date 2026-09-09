@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Claude Code: local-only, not shared with the team
+.claude/worktrees/
+.claude/settings.local.json
