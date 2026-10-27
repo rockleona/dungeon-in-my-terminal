@@ -10,7 +10,8 @@ managed with `uv`.
 uv run dungeon                  # play
 uv run dungeon --seed 4242      # replay one dungeon; the summary screen shows the seed
 uv run dungeon --lang en        # English UI; default is zh (Traditional Chinese)
-uv run pytest                   # full suite (187 tests, ~30s)
+uv run dungeon --content-dir my_mod/   # override classes.toml and/or monsters.toml
+uv run pytest                   # full suite (201 tests, ~30s)
 uv run python tools/tui_drive.py --last 3   # screenshot the real TUI (see Verifying below)
 uv build                        # wheel + sdist in dist/ (pure Python, py3-none-any)
 ```
@@ -26,13 +27,18 @@ src/dungeon_in_my_terminal/
 ├── cli.py         entry point and flags
 ├── i18n.py        language selection and the t() translation function
 ├── i18n_strings.py   the English translation table (data only)
+├── data/          shipped content, packaged into the wheel
+│   ├── classes.toml  the four hero classes: stats, growth, abilities
+│   └── monsters.toml the bestiary: tiers by depth, bosses, AI tags
 ├── core/          rules — never imports curses
 │   ├── dice.py       d20 checks, "2d6+3" parsing; every random result comes from here
 │   ├── dungeon.py    BSP generation, line of sight, BFS pathing, grid helpers
 │   ├── entity.py     one type for heroes and monsters; stats, statuses, ownership
 │   ├── abilities.py  the data shape every class and monster action is written in
-│   ├── classes.py    the four hero classes (a registry, not code paths)
-│   ├── monsters.py   the bestiary and AI behaviour tags
+│   ├── content.py    TOML → Ability/Stats; ContentError names the bad id + field
+│   ├── classes.py    HeroClass shape + registry loaded from data/classes.toml
+│   ├── monsters.py   MonsterDef/AI shape, registry from data/monsters.toml,
+│   │                 room_population
 │   ├── items.py      consumables, each wrapping an Ability
 │   ├── shop.py       the between-floors merchant: gear + prices (data only)
 │   ├── combat.py     to-hit and damage resolution, monster turns
@@ -55,9 +61,18 @@ reproduce a whole run. `tests/conftest.py` has `ScriptedRandom` for pinning
 specific rolls.
 
 **Classes, monsters and items are registries, not branches.** Adding a fifth
-class means appending a `HeroClass` to `classes.CLASSES`; combat resolves
-whatever `AbilityKind` the data names. Only a genuinely new *kind* of effect
-should touch `abilities.AbilityKind` and `combat.resolve`.
+class means adding a table to `data/classes.toml`; combat resolves whatever
+`AbilityKind` the data names. Only a genuinely new *kind* of effect should
+touch `abilities.AbilityKind` and `combat.resolve`. Items and the shop are
+still Python data (`items.py`, `shop.py`), not TOML.
+
+**Content files are player-editable, so errors are for players.** A malformed
+TOML must raise `content.ContentError` naming the entry id and field, and
+`cli.py` prints it and exits — never a raw traceback. `--content-dir` only
+needs the files it changes; `classes.reload()` / `monsters.reload()` fall
+back to the built-in file for the rest. Table order in `monsters.toml` is the
+roster's iteration order and therefore part of `--seed` replay: insert new
+non-boss monsters where they belong by depth, not at the end.
 
 **One initiative queue holds every unit**, heroes and monsters interleaved
 (`d20 + dexterity`). There is no separate "player phase". This is why the
@@ -118,7 +133,7 @@ of is the bug this closed.
 Traditional Chinese is the default and canonical language; English is
 available via `--lang en`. Every player-facing string — dynamic log lines in
 `game.py`/`combat.py`, static UI chrome in `render.py`/`app.py`, and registry
-data (`classes.py`, `monsters.py`, `items.py`, `shop.py`, `entity.py`'s
+data (`data/classes.toml`, `data/monsters.toml`, `items.py`, `shop.py`, `entity.py`'s
 `Status.label`/`STAT_NAMES`, `dice.py`'s verdict words) — must route through
 `i18n.t()`.
 
@@ -131,13 +146,16 @@ needs two unrelated English translations depending on context (the Bless
 `i18n.t(text, _ctx="status")` — the context is folded into the lookup key,
 never into the rendered text.
 
-Registries keep their Chinese literals untouched; translation happens only
-at *display* call sites in `render.py`/`app.py` (`i18n.t(hero.name)`,
-`i18n.t(item.description)`, …) and in the runtime log/message templates built
-in `game.py`/`combat.py`. Never call `i18n.t()` while a registry module is
-importing (`classes.py`, `monsters.py`, …) — that runs before the CLI has
-called `i18n.set_language()`, so the result would be frozen in whatever
-language happened to be active at import time.
+Registries keep their Chinese literals untouched (in the TOML files for
+classes and monsters); translation happens only at *display* call sites in
+`render.py`/`app.py` (`i18n.t(hero.name)`, `i18n.t(item.description)`, …)
+and in the runtime log/message templates built in `game.py`/`combat.py`.
+Never call `i18n.t()` while a registry loads (`classes.py`, `monsters.py`,
+`content.py`, …) — the first load runs at import, before the CLI has called
+`i18n.set_language()`, so the result would be frozen in whatever language
+happened to be active then. A `--content-dir` class or monster with a name
+that has no `EN` entry falls back to its source text in English mode; that
+is expected, not a bug.
 
 New strings need a matching `i18n_strings.EN` entry — `tests/test_i18n.py`
 enforces this two ways: an AST walk catches every literal template passed to
@@ -182,9 +200,10 @@ Three layers, in increasing cost:
 ## Balance knobs
 
 Party of 4, ten floors, boss on floor 5 (goblin king) and floor 10 (Abyss
-Lord, ends the run). Tuning lives in data, not logic: `classes.py` stats and
-per-class `hp_per_level` / `mp_per_level` / `primary_stat`, `monsters.py` tiers
-and `room_population`, `shop.py` gear tiers and prices, and in `game.py`
+Lord, ends the run). Tuning lives in data, not logic: `data/classes.toml`
+stats and per-class `hp_per_level` / `mp_per_level` / `primary_stat`,
+`data/monsters.toml` stats and `min_depth`/`max_depth` tiers,
+`monsters.room_population`, `shop.py` gear tiers and prices, and in `game.py`
 `REST_HP_FRACTION` / `REST_MP_FRACTION` / `EMPTY_ROOM_CHANCE` /
 `XP_PER_LEVEL` / `STAT_UP_EVERY` / `STAT_UP_AMOUNT`. Change these and re-run the
 autoplay numbers before deciding it feels right — `tests/autoplay.py` now shops
@@ -237,8 +256,11 @@ levelled fastest put the dumb agent at floor 10 in half its runs.
   read once at startup.
 - Gear only comes from the merchant; chests still drop consumables, not
   equipment. Fine for now, but a deeper loot table is the obvious next step.
-- **The repo has no remote yet.** The README's install commands point at
-  `github.com/rockleona/dungeon-in-my-terminal`, which does not exist until
-  someone pushes. The mechanism is proven (`uvx --from . dungeon` walks the
-  same build-then-run path), but that URL is unverified — say so rather than
-  claiming the one-liner works.
+- The remote now exists (`github.com/rockleona/dungeon-in-my-terminal`,
+  `main` pushed), but the README's `uvx --from git+…` one-liner has not been
+  run against it yet. The mechanism is proven (`uvx --from . dungeon` walks
+  the same build-then-run path); until someone runs the real URL, say so
+  rather than claiming it works.
+- There is no player-facing reference for the TOML schema beyond the
+  comments at the top of each shipped file (the README's 自訂職業與怪物
+  section points there).

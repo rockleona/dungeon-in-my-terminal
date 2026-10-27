@@ -58,6 +58,21 @@ dungeon --seed 4242
 
 從原始碼跑（開發用）就是 clone 之後 `uv run dungeon`，底下〈開發〉還有更多。
 
+### 自訂職業與怪物
+
+職業和怪物的數值、技能都寫在 TOML 裡，不用改程式碼就能調。把內建檔案複製出來改，再用 `--content-dir` 指過去：
+
+```bash
+mkdir my_mod
+cp src/dungeon_in_my_terminal/data/monsters.toml my_mod/   # 從 clone 下來的原始碼複製
+dungeon --content-dir my_mod
+```
+
+資料夾裡可以放 `classes.toml`、`monsters.toml` 其中一份或兩份，沒放的沿用內建版本。
+放進去的檔案會**整份取代**內建的那一份，不會跟內建合併，所以請從完整的內建檔開始改。
+欄位說明寫在兩份內建檔案的開頭註解裡。格式寫錯的話，遊戲不會啟動，會直接告訴你是哪一筆、哪個欄位出錯。
+怪物在檔案裡的排列順序會影響 `--seed` 產生的地城，新怪物請照出沒樓層插在對應位置，不要直接加在最後。
+
 ## 操作
 
 | 按鍵 | 作用 |
@@ -176,13 +191,15 @@ AI 分三種行為：近戰衝鋒、遠程風箏（被貼身會後退）、輔�
 ```
 src/dungeon_in_my_terminal/
 ├── cli.py            進入點與參數
+├── data/             內容資料：classes.toml（職業）、monsters.toml（怪物）
 ├── core/             遊戲規則 — 完全不依賴 curses，可在無終端機環境測試
 │   ├── dice.py       擲骰與 d20 檢定
 │   ├── dungeon.py    BSP 地城生成、視線、尋路
 │   ├── entity.py     單位、屬性、狀態效果
 │   ├── abilities.py  技能的資料型別（所有職業與怪物共用）
-│   ├── classes.py    四職業資料表
-│   ├── monsters.py   怪物資料表與 AI 型別
+│   ├── content.py    把 TOML 讀成技能與屬性，並回報格式錯誤
+│   ├── classes.py    職業的資料型別，從 data/classes.toml 載入
+│   ├── monsters.py   怪物的資料型別與 AI 型別，從 data/monsters.toml 載入
 │   ├── items.py      消耗品
 │   ├── shop.py       樓層之間的商人：商品與定價（純資料）
 │   ├── combat.py     命中/傷害結算、怪物 AI
@@ -196,8 +213,9 @@ src/dungeon_in_my_terminal/
 
 ### 加一個新職業
 
-在 `core/classes.py` append 一個 `HeroClass` 到 `CLASSES` 就好 — 選單、行動列與戰鬥都是讀這份註冊表。
-只有在需要全新的技能型別時，才要動 `AbilityKind` 與 `combat.resolve`。怪物同理，改 `core/monsters.py` 的 `ROSTER`。
+在 `data/classes.toml` 加一個新的表就好 — 選單、行動列與戰鬥都是讀這份註冊表。
+只有在需要全新的技能型別時，才要動 `AbilityKind` 與 `combat.resolve`。怪物同理，改 `data/monsters.toml`。
+要讓英文介面（`--lang en`）也顯示翻譯，記得在 `i18n_strings.py` 補上新名稱與說明的英文。
 
 ## 開發
 
